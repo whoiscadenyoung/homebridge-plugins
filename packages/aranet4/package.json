@@ -1,13 +1,10 @@
 {
-  "name": "@whois-homebridge/aranet4",
+  "name": "@whois-homebridge/homebridge-aranet4",
   "version": "0.1.2",
   "description": "Homebridge plugin for Aranet4 CO2/environment sensor via passive BLE scanning with Eve history support",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "homepage": "https://github.com/whoiscadenyoung/homebridge-plugins#readme",
-  "bugs": {
-    "url": "https://github.com/whoiscadenyoung/homebridge-plugins/issues"
-  },
   "files": [
     "dist/",
     "config.schema.json",
@@ -28,18 +25,8 @@
   },
   "keywords": [
     "homebridge-plugin",
-    "homebridge",
-    "aranet4",
-    "aranet",
-    "co2",
-    "carbon-dioxide",
-    "air-quality",
-    "ble",
-    "bluetooth",
-    "eve",
-    "fakegato"
+    "homebridge"
   ],
-  "author": "whoiscadenyoung",
   "license": "MIT",
   "repository": {
     "type": "git",
