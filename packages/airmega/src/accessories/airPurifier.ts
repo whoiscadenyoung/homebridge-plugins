@@ -74,8 +74,8 @@ export class AirPurifierAccessory {
     if (!PM_CAPABILITIES[this.device.productModel] || !PRESET_CAPABILITIES[this.device.productModel]) {
       platform.log.warn(
         `${this.device.name}: unknown productModel "${this.device.productModel}"; ` +
-        `not exposing PM2.5/PM10 to HomeKit and registering only the Sleep preset. ` +
-        `Please file an issue with this productModel string so a capability row can be added.`,
+        'not exposing PM2.5/PM10 to HomeKit and registering only the Sleep preset. ' +
+        'Please file an issue with this productModel string so a capability row can be added.',
       );
     }
     this.fanSpeedDebouncer = new Debouncer<1 | 2 | 3>(SETTER_DEBOUNCE_MS, async speed => {

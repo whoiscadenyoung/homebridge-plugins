@@ -90,7 +90,7 @@ export async function refreshAccessToken(refreshToken: string): Promise<AuthToke
   // A plain Error here lets the calling poll cycle log and try again next tick.
   if (resp.status === 429) {
     throw new RateLimitedError(
-      `Coway rate-limited on token refresh: HTTP 429. Wait at least an hour before retrying.`,
+      'Coway rate-limited on token refresh: HTTP 429. Wait at least an hour before retrying.',
     );
   }
   if (resp.status >= 500) {
@@ -210,7 +210,7 @@ async function handleAuthResponse(
   if (title === 'Coway - Password change message') {
     if (!params.skipPasswordChange) {
       throw new PasswordExpiredError(
-        "Coway is requesting a password change (the password hasn't been changed for 60 days or more).",
+        'Coway is requesting a password change (the password hasn\'t been changed for 60 days or more).',
       );
     }
     params.log.warn(
@@ -397,5 +397,5 @@ function decodeHtmlEntities(s: string): string {
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
     .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'");
+    .replace(/&#39;/g, '\'');
 }
