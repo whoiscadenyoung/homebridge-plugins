@@ -1,6 +1,6 @@
 {
   "name": "homebridge-aranet4-advanced-supabase",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Homebridge plugin for Aranet4 CO2/environment sensor via passive BLE scanning with Eve history support",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

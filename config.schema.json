@@ -78,7 +78,8 @@
           "key": {
             "title": "Secret API Key",
             "type": "string",
-            "placeholder": "your-secret-api-key"
+            "placeholder": "your-secret-api-key",
+            "secret": true
           }
         }
       }

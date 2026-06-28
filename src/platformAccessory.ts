@@ -261,7 +261,7 @@ export class Aranet4Accessory {
     // Supabase logging
     if (this.config.supabase) {
       insertRow(this.config.supabase, 'aranet4_readings', {
-        device_id:   this.accessory.UUID,
+        device_id:   (this.accessory.context.deviceId as string | undefined) ?? this.accessory.UUID,
         co2:         reading.co2,
         temperature: reading.temperature,
         pressure:    reading.pressure,
