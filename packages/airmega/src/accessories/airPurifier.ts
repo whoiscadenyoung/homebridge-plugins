@@ -1,0 +1,454 @@
+import {
+  PlatformAccessory, Service, CharacteristicValue,
+} from 'homebridge';
+
+import { AirmegaPlatform } from '../platform';
+import { CowayDevice, DeviceState } from '../api/types';
+import {
+  Attribute, ModeValue, LightMode,
+  PM_CAPABILITIES, PM_CAPABILITIES_UNKNOWN, PmCapabilities,
+  PRESET_CAPABILITIES, PRESET_CAPABILITIES_UNKNOWN, PresetCapabilities,
+} from './deviceCodes';
+
+interface PresetSpec {
+  key: 'sleep' | 'eco' | 'smart';
+  subtype: string;
+  display: string;
+  modeValue: string;
+  apiMode: DeviceState['mode'];
+}
+
+const PRESETS: readonly PresetSpec[] = [
+  { key: 'sleep', subtype: 'preset-sleep', display: 'Sleep', modeValue: ModeValue.NIGHT, apiMode: 'night' },
+  { key: 'eco',   subtype: 'preset-eco',   display: 'Eco',   modeValue: ModeValue.ECO,   apiMode: 'eco' },
+  { key: 'smart', subtype: 'preset-smart', display: 'Smart', modeValue: ModeValue.RAPID, apiMode: 'rapid' },
+];
+
+const LIGHT_SUBTYPE = 'led';
+
+// HAP requires FirmwareRevision to be a dotted numeric string (e.g. '1.0.6').
+// Anything that doesn't match raises a "not a valid value" warning and the
+// characteristic falls back to its default — so we validate before pushing.
+const FIRMWARE_REVISION_RE = /^\d+(\.\d+){0,2}$/;
+// Used until the first state poll lands a real value, and as a defensive
+// fallback if Coway ever returns a non-numeric MCU string.
+const FIRMWARE_REVISION_FALLBACK = '0.0.0';
+
+// Coalesce rapid-fire characteristic writes (Apple Home spams them when the
+// user drags a slider) and only fire the latest value once the user pauses.
+// 250ms is short enough that the user perceives the action as immediate but
+// long enough to absorb a typical drag.
+const SETTER_DEBOUNCE_MS = 250;
+
+export class AirPurifierAccessory {
+  private readonly device: CowayDevice;
+  private readonly pmCaps: PmCapabilities;
+  private readonly presetCaps: PresetCapabilities;
+
+  private readonly purifier: Service;
+  private readonly airQuality: Service;
+  private readonly preFilter: Service;
+  private readonly max2Filter: Service;
+  private readonly accessoryInfo: Service;
+  private readonly presetServices = new Map<PresetSpec['key'], Service>();
+  private readonly lightService?: Service;
+  private lastFirmwareRevision?: string;
+
+  private readonly fanSpeedDebouncer: Debouncer<1 | 2 | 3>;
+
+  private state?: DeviceState;
+  private pollHandle?: NodeJS.Timeout;
+  private refreshing = false;
+
+  constructor(
+    private readonly platform: AirmegaPlatform,
+    private readonly accessory: PlatformAccessory,
+    private readonly pollingInterval: number,
+  ) {
+    this.device = accessory.context.device as CowayDevice;
+    this.pmCaps = PM_CAPABILITIES[this.device.productModel] ?? PM_CAPABILITIES_UNKNOWN;
+    this.presetCaps = PRESET_CAPABILITIES[this.device.productModel] ?? PRESET_CAPABILITIES_UNKNOWN;
+    // PM_CAPABILITIES and PRESET_CAPABILITIES are populated from the same
+    // model set, so a miss in either means the model is unrecognized — one
+    // warn covers the consequences for both capability tables.
+    if (!PM_CAPABILITIES[this.device.productModel] || !PRESET_CAPABILITIES[this.device.productModel]) {
+      platform.log.warn(
+        `${this.device.name}: unknown productModel "${this.device.productModel}"; ` +
+        `not exposing PM2.5/PM10 to HomeKit and registering only the Sleep preset. ` +
+        `Please file an issue with this productModel string so a capability row can be added.`,
+      );
+    }
+    this.fanSpeedDebouncer = new Debouncer<1 | 2 | 3>(SETTER_DEBOUNCE_MS, async speed => {
+      try {
+        await this.platform.client.sendCommand(this.device, Attribute.FAN_SPEED, String(speed));
+      } catch (err) {
+        this.platform.log.warn(
+          `${this.device.name}: fan speed command failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    });
+    const C = platform.Characteristic;
+    const S = platform.Service;
+
+    this.accessoryInfo = accessory.getService(S.AccessoryInformation)!;
+    this.accessoryInfo
+      .setCharacteristic(C.Manufacturer, 'Coway')
+      .setCharacteristic(C.Model, this.device.productModel ?? this.device.model)
+      .setCharacteristic(C.SerialNumber, this.device.serial ?? this.device.deviceId)
+      .setCharacteristic(C.FirmwareRevision, FIRMWARE_REVISION_FALLBACK);
+
+    this.purifier = accessory.getService(S.AirPurifier) ?? accessory.addService(S.AirPurifier);
+    this.setServiceName(this.purifier, this.device.name);
+    // Mark the AirPurifier as the primary service so Apple Home shows the
+    // purifier tile, with the preset switches and air-quality sensor surfacing
+    // as sub-tiles.
+    this.purifier.setPrimaryService(true);
+
+    this.purifier.getCharacteristic(C.Active)
+      .onGet(() => this.state?.power ? 1 : 0)
+      .onSet(v => this.handlePowerSet(v));
+
+    this.purifier.getCharacteristic(C.CurrentAirPurifierState)
+      .onGet(() => this.state?.power ? 2 : 0); // 2 = purifying, 0 = inactive
+
+    this.purifier.getCharacteristic(C.TargetAirPurifierState)
+      .onGet(() => this.isAutoForUser(this.state?.mode) ? 1 : 0)
+      .onSet(v => this.handleTargetStateSet(v));
+
+    this.purifier.getCharacteristic(C.RotationSpeed)
+      .setProps({ minStep: 100 / 3 })
+      .onGet(() => this.fanSpeedToHomeKit(this.state?.fanSpeed ?? 1))
+      .onSet(v => this.handleRotationSpeedSet(v));
+
+    this.airQuality = accessory.getService(S.AirQualitySensor)
+      ?? accessory.addService(S.AirQualitySensor);
+    this.setServiceName(this.airQuality, 'Air Quality');
+    this.airQuality.getCharacteristic(C.AirQuality)
+      .onGet(() => this.state?.airQuality ?? 0);
+
+    // Per-model PM gating. The AirQualitySensor service template includes
+    // PM2_5Density and PM10Density as optional characteristics — once we've
+    // ever called updateCharacteristic on them, they stick on the cached
+    // accessory and render in HomeKit at their default of 0 even if we stop
+    // pushing. Explicit removal cleans up accessories that were registered
+    // before this gating existed.
+    this.applyPmCharacteristic(C.PM2_5Density, this.pmCaps.pm25);
+    this.applyPmCharacteristic(C.PM10Density, this.pmCaps.pm10);
+
+    this.preFilter = accessory.getServiceById(S.FilterMaintenance, 'pre')
+      ?? accessory.addService(S.FilterMaintenance, 'Pre-filter', 'pre');
+    this.setServiceName(this.preFilter, 'Pre-filter');
+    this.max2Filter = accessory.getServiceById(S.FilterMaintenance, 'max2')
+      ?? accessory.addService(S.FilterMaintenance, 'Max2 Filter', 'max2');
+    this.setServiceName(this.max2Filter, 'Max2 Filter');
+
+    for (const preset of PRESETS) {
+      if (!this.presetCaps[preset.key]) {
+        // Remove stale switch from accessories registered before per-model
+        // gating existed — without this they'd persist in Apple Home as a
+        // tile the user can press to no effect (or, post-PR #1's status
+        // validation, a tile that returns a Coway error every time).
+        const stale = accessory.getServiceById(S.Switch, preset.subtype);
+        if (stale) accessory.removeService(stale);
+        continue;
+      }
+      const svc = accessory.getServiceById(S.Switch, preset.subtype)
+        ?? accessory.addService(S.Switch, preset.display, preset.subtype);
+      this.setServiceName(svc, preset.display);
+      svc.getCharacteristic(C.On)
+        .onGet(() => this.state?.mode === preset.apiMode)
+        .onSet(v => this.handlePresetSet(preset, v));
+      this.presetServices.set(preset.key, svc);
+    }
+
+    const exposeLight = platform.config.exposeLight ?? true;
+    if (exposeLight) {
+      this.lightService = accessory.getServiceById(S.Switch, LIGHT_SUBTYPE)
+        ?? accessory.addService(S.Switch, 'Display Light', LIGHT_SUBTYPE);
+      this.setServiceName(this.lightService, 'Display Light');
+      this.lightService.getCharacteristic(C.On)
+        .onGet(() => this.state?.lightOn ?? false)
+        .onSet(v => this.handleLightSet(v));
+    } else {
+      // If the user disabled light exposure, remove a previously-registered service.
+      const stale = accessory.getServiceById(S.Switch, LIGHT_SUBTYPE);
+      if (stale) accessory.removeService(stale);
+    }
+
+    this.startPolling();
+  }
+
+  // --- characteristic handlers ---
+
+  private async handlePowerSet(value: CharacteristicValue): Promise<void> {
+    const target = value === 1;
+    await this.platform.client.sendCommand(this.device, Attribute.POWER, target ? '1' : '0');
+    if (this.state) this.state.power = target;
+  }
+
+  private async handleTargetStateSet(value: CharacteristicValue): Promise<void> {
+    if (value === 1) {
+      await this.platform.client.sendCommand(this.device, Attribute.MODE, ModeValue.AUTO);
+      if (this.state) this.state.mode = 'auto';
+      this.clearAllPresets();
+      return;
+    }
+    // Going to manual: writing fan speed implicitly switches the device out of auto.
+    // We re-send the current fan speed so we don't accidentally jump to a new speed.
+    const fan = this.state?.fanSpeed ?? 1;
+    await this.platform.client.sendCommand(this.device, Attribute.FAN_SPEED, String(fan));
+    if (this.state) this.state.mode = 'manual';
+    this.clearAllPresets();
+  }
+
+  private async handleRotationSpeedSet(value: CharacteristicValue): Promise<void> {
+    const speed = this.homeKitToFanSpeed(value as number);
+    // Update local state optimistically so the next characteristic read is
+    // consistent and HomeKit doesn't show stale values during the debounce
+    // window.
+    if (this.state) {
+      this.state.fanSpeed = speed;
+      this.state.mode = 'manual';
+    }
+    this.clearAllPresets();
+    // When the user drags the speed slider, Apple Home spams onSet calls
+    // (often three or four per drag). Coalesce them and only fire the latest
+    // value to Coway after the user pauses, capping API traffic and avoiding
+    // visible flicker as multiple commands settle.
+    this.fanSpeedDebouncer.schedule(speed);
+  }
+
+  private async handlePresetSet(preset: PresetSpec, value: CharacteristicValue): Promise<void> {
+    if (value) {
+      await this.platform.client.sendCommand(this.device, Attribute.MODE, preset.modeValue);
+      if (this.state) this.state.mode = preset.apiMode;
+      // Mutual exclusion: clear the other two preset switches synchronously.
+      for (const other of PRESETS) {
+        if (other.key === preset.key) continue;
+        const svc = this.presetServices.get(other.key);
+        svc?.updateCharacteristic(this.platform.Characteristic.On, false);
+      }
+      return;
+    }
+    // Per HANDOFF.md: when a preset is explicitly turned off and no other preset
+    // is being activated, do nothing. The next poll reconciles. This avoids
+    // sending a stray manual/auto command when the user is mid-switch between
+    // presets (HomeKit sends OFF on the old switch before ON on the new one).
+  }
+
+  private async handleLightSet(value: CharacteristicValue): Promise<void> {
+    if (this.state && !this.state.power) {
+      // Per cowayaio's docs the 400S ignores light commands when the unit is
+      // off. Reflect that in HomeKit by snapping the toggle back.
+      this.platform.log.debug(`${this.device.name}: ignoring light toggle while power is off`);
+      this.lightService?.updateCharacteristic(this.platform.Characteristic.On, this.state.lightOn);
+      return;
+    }
+    await this.platform.client.sendCommand(
+      this.device, Attribute.LIGHT, value ? LightMode.ON : LightMode.OFF,
+    );
+    if (this.state) this.state.lightOn = !!value;
+  }
+
+  // --- polling ---
+
+  private startPolling(): void {
+    // Log only the message — bare Error objects from axios may carry config
+    // and request properties that contain Authorization headers or the login
+    // form body in their stringified form.
+    this.refresh().catch(e =>
+      this.platform.log.warn(
+        `${this.device.name}: initial refresh failed: ${e instanceof Error ? e.message : String(e)}`,
+      ),
+    );
+    this.pollHandle = setInterval(() => {
+      this.refresh().catch(e =>
+        this.platform.log.debug(
+          `${this.device.name}: poll failed: ${e instanceof Error ? e.message : String(e)}`,
+        ),
+      );
+    }, this.pollingInterval);
+  }
+
+  private async refresh(): Promise<void> {
+    // Guard against overlapping polls: a slow Coway response (3 round-trips,
+    // up to ~75s with worst-case retries) can outlast the polling interval,
+    // and unguarded setInterval would queue successors on top.
+    if (this.refreshing) {
+      this.platform.log.debug(`${this.device.name}: skipping poll, prior refresh still in flight`);
+      return;
+    }
+    this.refreshing = true;
+    try {
+      this.state = await this.platform.client.getDeviceState(this.device);
+      this.pushUpdates();
+    } finally {
+      this.refreshing = false;
+    }
+  }
+
+  private pushUpdates(): void {
+    if (!this.state) return;
+    const C = this.platform.Characteristic;
+
+    this.purifier.updateCharacteristic(C.Active, this.state.power ? 1 : 0);
+    this.purifier.updateCharacteristic(C.CurrentAirPurifierState, this.state.power ? 2 : 0);
+    this.purifier.updateCharacteristic(
+      C.TargetAirPurifierState, this.isAutoForUser(this.state.mode) ? 1 : 0,
+    );
+    this.purifier.updateCharacteristic(
+      C.RotationSpeed, this.fanSpeedToHomeKit(this.state.fanSpeed),
+    );
+
+    this.airQuality.updateCharacteristic(C.AirQuality, this.state.airQuality);
+    // PM updates are gated by the per-model capability table. Models that
+    // don't actually report PM2.5 (e.g. the 400S) populate PM25_IDX with 0,
+    // which would otherwise look like "very clean air" in HomeKit forever.
+    if (this.pmCaps.pm25 && this.state.pm25 !== undefined) {
+      this.airQuality.updateCharacteristic(C.PM2_5Density, this.state.pm25);
+    }
+    if (this.pmCaps.pm10 && this.state.pm10 !== undefined) {
+      this.airQuality.updateCharacteristic(C.PM10Density, this.state.pm10);
+    }
+
+    // Only push filter values when Coway returned them. Skipping the update
+    // leaves HomeKit's last known value in place, which is safer than
+    // synthesizing a healthy 100% on missing data.
+    if (this.state.preFilterPct !== undefined) {
+      this.preFilter.updateCharacteristic(C.FilterLifeLevel, this.state.preFilterPct);
+      this.preFilter.updateCharacteristic(
+        C.FilterChangeIndication, this.state.preFilterPct < 10 ? 1 : 0,
+      );
+    }
+    if (this.state.max2FilterPct !== undefined) {
+      this.max2Filter.updateCharacteristic(C.FilterLifeLevel, this.state.max2FilterPct);
+      this.max2Filter.updateCharacteristic(
+        C.FilterChangeIndication, this.state.max2FilterPct < 10 ? 1 : 0,
+      );
+    }
+
+    for (const preset of PRESETS) {
+      const svc = this.presetServices.get(preset.key);
+      svc?.updateCharacteristic(C.On, this.state.mode === preset.apiMode);
+    }
+
+    this.lightService?.updateCharacteristic(C.On, this.state.lightOn);
+
+    this.pushFirmwareRevision(this.state.mcuVersion);
+  }
+
+  /**
+   * Update the AccessoryInformation FirmwareRevision when Coway returns a
+   * dotted-numeric MCU version. Skipped silently if the value doesn't match
+   * HAP's required format, since pushing a non-conforming string would only
+   * earn a warning and a revert to the default.
+   */
+  private pushFirmwareRevision(mcuVersion: string | undefined): void {
+    if (!mcuVersion || !FIRMWARE_REVISION_RE.test(mcuVersion)) return;
+    if (mcuVersion === this.lastFirmwareRevision) return;
+    this.accessoryInfo.updateCharacteristic(
+      this.platform.Characteristic.FirmwareRevision, mcuVersion,
+    );
+    this.lastFirmwareRevision = mcuVersion;
+  }
+
+  private clearAllPresets(): void {
+    const C = this.platform.Characteristic;
+    for (const preset of PRESETS) {
+      this.presetServices.get(preset.key)?.updateCharacteristic(C.On, false);
+    }
+  }
+
+  // --- helpers ---
+
+  /**
+   * Set both `Name` (the static, often hidden identifier) and `ConfiguredName`
+   * (the user-visible label Apple Home actually displays for sub-services).
+   * Without ConfiguredName, every sub-tile in iOS 16+ falls back to the
+   * accessory's own name — which is why all five Airmega sub-tiles previously
+   * read "Airmega 400S" instead of "Sleep" / "Eco" / "Display Light" / etc.
+   *
+   * `addOptionalCharacteristic` is needed because HAP-NodeJS's metadata for
+   * AirPurifier / AirQualitySensor / FilterMaintenance / Switch doesn't list
+   * ConfiguredName as a recognized optional characteristic, so writing it via
+   * setCharacteristic alone produces a "Characteristic not in required or
+   * optional characteristic section" warning per service. Registering it on
+   * the optional list first silences the warning and matches the documented
+   * pattern for adding non-canonical characteristics.
+   */
+  private setServiceName(svc: Service, name: string): void {
+    const C = this.platform.Characteristic;
+    svc.setCharacteristic(C.Name, name);
+    svc.addOptionalCharacteristic(C.ConfiguredName);
+    svc.setCharacteristic(C.ConfiguredName, name);
+  }
+
+  /**
+   * Add or remove an optional characteristic on the AirQualitySensor service
+   * based on whether the model supports it. Called once during construction
+   * so cached accessories that were registered before per-model gating shed
+   * stale PM2.5/PM10 characteristics rather than showing a fake 0.
+   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private applyPmCharacteristic(ctor: any, supported: boolean): void {
+    if (supported) {
+      this.airQuality.getCharacteristic(ctor);
+    } else if (this.airQuality.testCharacteristic(ctor)) {
+      this.airQuality.removeCharacteristic(this.airQuality.getCharacteristic(ctor));
+    }
+  }
+
+  /**
+   * Decide whether the device's current mode should read as "Auto" to the
+   * HomeKit user. mode='auto' (register=1) is obviously Auto. mode='eco'
+   * (register=6) is a firmware-driven sub-state of Smart Mode on every
+   * model except the MightyS, so for those models the user is still
+   * conceptually in Auto when the firmware enters Eco on its own. On the
+   * MightyS, Eco is an explicit user preset and should read as Manual
+   * with the Eco preset switch active — matching how Apple Home surfaces
+   * any other user-selected preset.
+   */
+  private isAutoForUser(mode: DeviceState['mode'] | undefined): boolean {
+    if (mode === 'auto') return true;
+    if (mode === 'eco' && !this.presetCaps.eco) return true;
+    return false;
+  }
+
+  private fanSpeedToHomeKit(s: number): number {
+    return Math.round((s / 3) * 100);
+  }
+  private homeKitToFanSpeed(pct: number): 1 | 2 | 3 {
+    if (pct <= 33) return 1;
+    if (pct <= 66) return 2;
+    return 3;
+  }
+}
+
+/**
+ * Coalesces rapid-fire writes into a single trailing call. Each `schedule(v)`
+ * (re)starts a timer; when the timer fires, the most-recent value is passed
+ * to `onFire`. We use this for the fan-speed slider where Apple Home emits
+ * several onSet callbacks per drag — without it, every intermediate value
+ * round-trips to Coway and the user sees flicker as commands settle.
+ */
+class Debouncer<T> {
+  private timer?: NodeJS.Timeout;
+  private latest?: T;
+
+  constructor(
+    private readonly delayMs: number,
+    private readonly onFire: (value: T) => Promise<void>,
+  ) {}
+
+  schedule(value: T): void {
+    this.latest = value;
+    if (this.timer) clearTimeout(this.timer);
+    this.timer = setTimeout(() => {
+      this.timer = undefined;
+      const v = this.latest as T;
+      // Errors must be caught here — the setTimeout callback is detached from
+      // any caller and an unhandled rejection would crash Homebridge.
+      this.onFire(v).catch(() => undefined);
+    }, this.delayMs);
+  }
+}
