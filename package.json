@@ -1,4 +1,7 @@
 {
     "name": "homebridge",
-    "private": true
+    "private": true,
+    "workspaces": [
+        "packages/*"
+    ]
 }
