@@ -1,5 +1,5 @@
 {
-  "name": "homebridge-aranet4-advanced",
+  "name": "homebridge-aranet4-advanced-supabase",
   "version": "0.1.1",
   "description": "Homebridge plugin for Aranet4 CO2/environment sensor via passive BLE scanning with Eve history support",
   "main": "dist/index.js",
@@ -32,11 +32,11 @@
     "eve",
     "fakegato"
   ],
-  "author": "RobSim",
+  "author": "whoiscadenyoung",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/RobSim/homebridge-aranet4-advanced.git"
+    "url": "https://github.com/whoiscadenyoung/homebridge-aranet4-advanced.git"
   },
   "engines": {
     "node": "^20.0.0 || ^22.0.0 || ^24.0.0",

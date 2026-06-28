@@ -14,6 +14,7 @@ import {
   DEFAULT_CO2_ALERT_THRESHOLD,
   DEFAULT_LOW_BATTERY_THRESHOLD,
 } from './settings';
+import { insertRow } from './supabaseLogger';
 
 // ---------------------------------------------------------------------------
 // Eve-compatible custom characteristic for atmospheric pressure
@@ -256,6 +257,22 @@ export class Aranet4Accessory {
         ppm: reading.co2,
       });
     }
+
+    // Supabase logging
+    if (this.config.supabase) {
+      insertRow(this.config.supabase, 'aranet4_readings', {
+        device_id:   this.accessory.UUID,
+        co2:         reading.co2,
+        temperature: reading.temperature,
+        pressure:    reading.pressure,
+        humidity:    reading.humidity,
+        battery:     reading.battery,
+        status:      reading.status,
+        interval:    reading.interval,
+        age:         reading.age,
+      }, this.log);
+    }
+
   }
 
   /** Mark the sensor as inactive (e.g. device disconnected). */
