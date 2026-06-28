@@ -87,7 +87,6 @@ export interface Aranet4DeviceConfig {
   co2AlertThreshold: number;
   lowBatteryThreshold: number;
   enableHistory: boolean;
-  supabase?: { url: string; key: string }
 }
 
 /** Top-level platform configuration. */
@@ -95,7 +94,7 @@ export interface Aranet4PlatformConfig {
   platform: string;
   name: string;
   devices?: Aranet4DeviceConfig[];
-  supabase?: { url: string; key: string }
+  mqttBroker?: string;
 }
 
 // ---------------------------------------------------------------------------

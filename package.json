@@ -5,6 +5,7 @@
         "packages/*"
     ],
     "scripts": {
+        "build:hb": "bun run --filter @whois-homebridge/* lint && bun run --filter @whois-homebridge/* build",
         "clean": "bunx rimraf node_modules package-lock.json bun.lock && bunx rimraf packages/*/node_modules packages/*/dist"
     }
 }

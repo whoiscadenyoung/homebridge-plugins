@@ -6,7 +6,7 @@ import {
 import { PLATFORM_NAME, PLUGIN_NAME, DEFAULT_POLL_SECONDS } from './settings';
 import { CowayClient } from './api/cowayClient';
 import { AirPurifierAccessory } from './accessories/airPurifier';
-import { SupabaseConfig, checkConnection } from './supabaseLogger';
+import { MqttPublisher } from './mqttPublisher';
 
 export interface AirmegaConfig extends PlatformConfig {
   username: string;
@@ -14,7 +14,7 @@ export interface AirmegaConfig extends PlatformConfig {
   skipPasswordChange?: boolean;
   pollingInterval?: number;
   exposeLight?: boolean;
-  supabase?: SupabaseConfig;
+  mqttBroker?: string;
 }
 
 export class AirmegaPlatform implements DynamicPlatformPlugin {
@@ -30,7 +30,7 @@ export class AirmegaPlatform implements DynamicPlatformPlugin {
   public readonly client!: CowayClient;
   private readonly pollingInterval: number;
   private readonly configured: boolean;
-  readonly supabaseConfig: SupabaseConfig | undefined;
+  private mqttPublisher: MqttPublisher | null = null;
 
   constructor(
     public readonly log: Logger,
@@ -49,14 +49,16 @@ export class AirmegaPlatform implements DynamicPlatformPlugin {
     const pollSeconds = Number.isFinite(rawPoll) ? Math.max(30, rawPoll) : DEFAULT_POLL_SECONDS;
     this.pollingInterval = pollSeconds * 1000;
 
-    this.supabaseConfig = config.supabase;
-
     if (!config?.username || !config?.password) {
       this.log.error('Username and password are required.');
       this.configured = false;
       return;
     }
     this.configured = true;
+
+    if (config.mqttBroker) {
+      this.mqttPublisher = new MqttPublisher(config.mqttBroker, 'airmega', this.log);
+    }
 
     this.client = new CowayClient({
       username: config.username,
@@ -77,6 +79,10 @@ export class AirmegaPlatform implements DynamicPlatformPlugin {
         this.log.error('Device discovery failed:', err instanceof Error ? err.message : String(err));
       });
     });
+
+    this.api.on('shutdown', () => {
+      this.mqttPublisher?.disconnect();
+    });
   }
 
   configureAccessory(accessory: PlatformAccessory): void {
@@ -89,10 +95,6 @@ export class AirmegaPlatform implements DynamicPlatformPlugin {
       return;
     }
 
-    if (this.supabaseConfig) {
-      void checkConnection(this.supabaseConfig, 'airmega_readings', this.log);
-    }
-
     await this.client.login();
     const devices = await this.client.listDevices();
 
@@ -103,11 +105,11 @@ export class AirmegaPlatform implements DynamicPlatformPlugin {
       if (existing) {
         existing.context.device = device;
         this.api.updatePlatformAccessories([existing]);
-        new AirPurifierAccessory(this, existing, this.pollingInterval, this.supabaseConfig);
+        new AirPurifierAccessory(this, existing, this.pollingInterval, this.mqttPublisher ?? undefined);
       } else {
         const accessory = new this.api.platformAccessory(device.name, uuid);
         accessory.context.device = device;
-        new AirPurifierAccessory(this, accessory, this.pollingInterval, this.supabaseConfig);
+        new AirPurifierAccessory(this, accessory, this.pollingInterval, this.mqttPublisher ?? undefined);
         this.api.registerPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [accessory]);
       }
     }

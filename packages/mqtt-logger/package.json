@@ -1,8 +1,8 @@
 {
-  "displayName": "Homebridge Airmega IoCare+",
-  "name": "@whois-homebridge/homebridge-airmega",
-  "version": "0.3.0",
-  "description": "Homebridge plugin for Coway Airmega purifiers (400S verified; 300S / 250S / MightyS / IconS share the IoCare+ API).",
+  "displayName": "Homebridge MQTT Logger",
+  "name": "@whois-homebridge/homebridge-mqtt-logger",
+  "version": "0.1.0",
+  "description": "Homebridge plugin that embeds an MQTT broker and routes sensor readings to Supabase.",
   "license": "MIT",
   "homepage": "https://github.com/whoiscadenyoung/homebridge-plugins#readme",
   "publishConfig": {
@@ -13,11 +13,9 @@
     "url": "git+https://github.com/whoiscadenyoung/homebridge-plugins.git"
   },
   "main": "dist/index.js",
-  "icon": "icon.png",
   "files": [
     "dist/",
     "config.schema.json",
-    "icon.png",
     "LICENSE",
     "README.md"
   ],
@@ -36,15 +34,13 @@
     "homebridge"
   ],
   "dependencies": {
-    "axios": "^1.18.1",
-    "mqtt": "^5.15.1"
+    "aedes": "^1.1.0"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
     "@eslint/js": "^9.0.0",
     "homebridge": "^1.8.0",
     "eslint": "^9.0.0",
-    "@types/jest": "^30.0.0",
     "nodemon": "^3.1.0",
     "typescript": "^5.4.0",
     "typescript-eslint": "^8.0.0"

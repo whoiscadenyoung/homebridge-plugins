@@ -21,7 +21,7 @@ import {
 } from './settings';
 import { BleManager } from './bleManager';
 import { Aranet4Accessory } from './platformAccessory';
-import { checkConnection } from './supabaseLogger';
+import { MqttPublisher } from './mqttPublisher';
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const pkg = require('../package.json');
@@ -47,7 +47,7 @@ export class Aranet4Platform implements DynamicPlatformPlugin {
   private readonly aranet4Accessories = new Map<string, Aranet4Accessory>();
 
   private bleManager: BleManager | null = null;
-  private readonly platformSupabase: { url: string; key: string } | undefined;
+  private mqttPublisher: MqttPublisher | null = null;
 
   // FakeGato — loaded dynamically per-instance since it uses legacy module patterns.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -64,7 +64,9 @@ export class Aranet4Platform implements DynamicPlatformPlugin {
     this.Characteristic = api.hap.Characteristic;
 
     const platformConfig = config as unknown as Aranet4PlatformConfig;
-    this.platformSupabase = platformConfig.supabase;
+    if (platformConfig.mqttBroker) {
+      this.mqttPublisher = new MqttPublisher(platformConfig.mqttBroker, 'aranet4', this.log);
+    }
     this.deviceConfigs = (platformConfig.devices ?? []).map((d) => ({
       name: d.name || 'Aranet4',
       // Pre-normalize the address once so every subsequent lookup is a
@@ -74,7 +76,6 @@ export class Aranet4Platform implements DynamicPlatformPlugin {
       co2AlertThreshold: clamp(d.co2AlertThreshold ?? DEFAULT_CO2_ALERT_THRESHOLD, 400, 5000),
       lowBatteryThreshold: clamp(d.lowBatteryThreshold ?? DEFAULT_LOW_BATTERY_THRESHOLD, 5, 50),
       enableHistory: d.enableHistory !== false,
-      supabase: d.supabase ?? platformConfig.supabase,
     }));
 
     this.log.info('Aranet4 platform initializing...');
@@ -117,11 +118,6 @@ export class Aranet4Platform implements DynamicPlatformPlugin {
       // Remove stale accessories that no longer match any configured device
       this.pruneStaleAccessories();
 
-      // Verify Supabase connectivity before readings start arriving
-      if (this.platformSupabase) {
-        void checkConnection(this.platformSupabase, 'aranet4_readings', this.log);
-      }
-
       // Initialize BLE manager
       this.bleManager = new BleManager(this.log, this.deviceConfigs);
       this.bleManager.onReading((deviceId, reading) => {
@@ -147,6 +143,8 @@ export class Aranet4Platform implements DynamicPlatformPlugin {
       const msg = error instanceof Error ? error.message : String(error);
       this.log.warn(`Error shutting down BLE manager: ${msg}`);
     }
+
+    this.mqttPublisher?.disconnect();
   }
 
   // -----------------------------------------------------------------------
@@ -188,7 +186,6 @@ export class Aranet4Platform implements DynamicPlatformPlugin {
       co2AlertThreshold: DEFAULT_CO2_ALERT_THRESHOLD,
       lowBatteryThreshold: DEFAULT_LOW_BATTERY_THRESHOLD,
       enableHistory: true,
-      supabase: this.platformSupabase,
     };
 
     // Check if Homebridge restored a cached accessory for this UUID
@@ -207,7 +204,13 @@ export class Aranet4Platform implements DynamicPlatformPlugin {
     }
 
     // Wrap in our Aranet4Accessory class
-    const aranet4 = new Aranet4Accessory(this.log, this.api, platformAccessory, deviceConfig);
+    const aranet4 = new Aranet4Accessory(
+      this.log,
+      this.api,
+      platformAccessory,
+      deviceConfig,
+      this.mqttPublisher ?? undefined,
+    );
 
     // Attach FakeGato history service if enabled
     if (deviceConfig.enableHistory && this.FakeGatoHistoryService) {
@@ -339,7 +342,7 @@ export class Aranet4Platform implements DynamicPlatformPlugin {
     this.log.info(`Node ${process.version} | ${os.platform()} ${os.arch()}`);
     this.log.info(`Storage path: ${this.api.user.storagePath()}`);
     this.log.info(`FakeGato history: ${this.FakeGatoHistoryService ? 'available' : 'not loaded'}`);
-    this.log.info(`Supabase logging: ${this.platformSupabase ? `enabled (${this.platformSupabase.url})` : 'not configured'}`);
+    this.log.info(`MQTT logging: ${this.mqttPublisher ? 'enabled' : 'not configured'}`);
     this.log.info(`Configured devices: ${this.deviceConfigs.length}`);
     for (const d of this.deviceConfigs) {
       this.log.info(

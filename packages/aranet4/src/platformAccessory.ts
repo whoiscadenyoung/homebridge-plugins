@@ -14,7 +14,7 @@ import {
   DEFAULT_CO2_ALERT_THRESHOLD,
   DEFAULT_LOW_BATTERY_THRESHOLD,
 } from './settings';
-import { insertRow } from './supabaseLogger';
+import { MqttPublisher } from './mqttPublisher';
 
 // ---------------------------------------------------------------------------
 // Eve-compatible custom characteristic for atmospheric pressure
@@ -95,6 +95,7 @@ export class Aranet4Accessory {
     private readonly api: API,
     public readonly accessory: PlatformAccessory,
     config?: Aranet4DeviceConfig,
+    private readonly mqttPublisher?: MqttPublisher,
   ) {
     this.hap = this.api.hap;
     this.config = config ?? {
@@ -258,10 +259,10 @@ export class Aranet4Accessory {
       });
     }
 
-    // Supabase logging
-    if (this.config.supabase) {
-      insertRow(this.config.supabase, 'aranet4_readings', {
-        device_id:   (this.accessory.context.deviceId as string | undefined) ?? this.accessory.UUID,
+    // MQTT logging
+    this.mqttPublisher?.publish(
+      (this.accessory.context.deviceId as string | undefined) ?? this.accessory.UUID,
+      {
         co2:         reading.co2,
         temperature: reading.temperature,
         pressure:    reading.pressure,
@@ -270,8 +271,8 @@ export class Aranet4Accessory {
         status:      reading.status,
         interval:    reading.interval,
         age:         reading.age,
-      }, this.log);
-    }
+      },
+    );
 
   }
 

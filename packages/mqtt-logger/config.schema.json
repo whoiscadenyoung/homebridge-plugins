@@ -1,0 +1,52 @@
+{
+  "pluginAlias": "MqttLogger",
+  "pluginType": "platform",
+  "singular": true,
+  "headerDisplay": "Embeds an MQTT broker and routes sensor readings from aranet4 and airmega plugins to Supabase. Run this plugin on the main Homebridge instance.",
+  "schema": {
+    "type": "object",
+    "properties": {
+      "name": {
+        "title": "Name",
+        "type": "string",
+        "default": "MqttLogger",
+        "required": true
+      },
+      "port": {
+        "title": "MQTT Broker Port",
+        "type": "integer",
+        "default": 1883,
+        "minimum": 1024,
+        "maximum": 65535,
+        "description": "TCP port for the embedded MQTT broker. Other plugins connect here."
+      },
+      "topicPrefix": {
+        "title": "Topic Prefix",
+        "type": "string",
+        "default": "homebridge",
+        "description": "Prefix for all subscribed topics. Must match the prefix used by publisher plugins."
+      },
+      "supabase": {
+        "title": "Supabase",
+        "type": "object",
+        "required": true,
+        "properties": {
+          "url": {
+            "title": "Project URL",
+            "type": "string",
+            "required": true,
+            "placeholder": "https://yourproject.supabase.co"
+          },
+          "key": {
+            "title": "Supabase Key",
+            "type": "string",
+            "required": true,
+            "description": "Use service role key to bypass RLS policies.",
+            "placeholder": "your-service-role-key",
+            "x-schema-form": { "type": "password" }
+          }
+        }
+      }
+    }
+  }
+}
