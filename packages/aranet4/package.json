@@ -1,9 +1,13 @@
 {
-  "name": "homebridge-aranet4-advanced-supabase",
+  "name": "@whois-homebridge/aranet4",
   "version": "0.1.2",
   "description": "Homebridge plugin for Aranet4 CO2/environment sensor via passive BLE scanning with Eve history support",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "homepage": "https://github.com/whoiscadenyoung/homebridge-plugins#readme",
+  "bugs": {
+    "url": "https://github.com/whoiscadenyoung/homebridge-plugins/issues"
+  },
   "files": [
     "dist/",
     "config.schema.json",
@@ -11,6 +15,9 @@
     "LICENSE",
     "CHANGELOG.md"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "lint": "eslint src/ --config eslint.config.mjs",
     "watch": "npm run build && npm link && nodemon",
@@ -36,7 +43,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/whoiscadenyoung/homebridge-aranet4-advanced.git"
+    "url": "git+https://github.com/whoiscadenyoung/homebridge-plugins.git"
   },
   "engines": {
     "node": "^20.0.0 || ^22.0.0 || ^24.0.0",
