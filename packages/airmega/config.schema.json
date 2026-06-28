@@ -52,10 +52,11 @@
             "placeholder": "https://yourproject.supabase.co"
           },
           "key": {
-            "title": "Secret API Key",
+            "title": "Supabase Key",
             "type": "string",
-            "placeholder": "your-service-role-key",
-            "secret": true
+            "description": "Use secret key to skip RLS policies.",
+            "placeholder": "your-secret-api-key",
+            "x-schema-form": { "type": "password" }
           }
         }
       }
