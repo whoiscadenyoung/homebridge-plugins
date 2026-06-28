@@ -1,4 +1,5 @@
 import net from 'net';
+import { Aedes } from 'aedes'
 import {
   API,
   DynamicPlatformPlugin,
@@ -12,20 +13,6 @@ import {
   MqttLoggerConfig,
   TOPIC_TABLE_MAP,
 } from './settings.js';
-
-// ---------------------------------------------------------------------------
-// Aedes MQTT broker v0.x — CJS factory function (aedes v1 is ESM-only)
-// ---------------------------------------------------------------------------
-
-type AedesInstance = {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  on(event: string, cb: (...args: any[]) => void): void;
-  handle(socket: net.Socket): void;
-  close(cb?: () => void): void;
-};
-
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const createBroker = require('aedes') as (opts?: object) => AedesInstance;
 
 // ---------------------------------------------------------------------------
 // Supabase helpers — inlined to avoid workspace:* dependency issues
@@ -96,7 +83,7 @@ export class MqttLoggerPlatform implements DynamicPlatformPlugin {
   private readonly supabase: SupabaseConfig;
   private readonly port: number;
   private readonly topicPrefix: string;
-  private broker: AedesInstance | null = null;
+  private broker: Aedes | null = null;
   private server: net.Server | null = null;
 
   constructor(
@@ -130,20 +117,17 @@ export class MqttLoggerPlatform implements DynamicPlatformPlugin {
 
     void checkConnection(this.supabase, 'aranet4_readings', this.log);
 
-    this.broker = createBroker();
+    this.broker = new Aedes();
 
-    this.broker.on('client', (client: { id: string }) => {
+    this.broker.on('client', (client) => {
       this.log.info(`[MQTT] Client connected: ${client.id}`);
     });
 
-    this.broker.on('clientDisconnect', (client: { id: string }) => {
+    this.broker.on('clientDisconnect', (client) => {
       this.log.debug(`[MQTT] Client disconnected: ${client.id}`);
     });
 
-    this.broker.on('publish', (
-      packet: { topic: string; payload: Buffer | string },
-      client: { id: string } | null,
-    ) => {
+    this.broker.on('publish', (packet, client) => {
       if (!client) return; // skip broker-internal retain/LWT messages
       const topic = packet.topic;
       if (!topic.startsWith(this.topicPrefix + '/')) return;
