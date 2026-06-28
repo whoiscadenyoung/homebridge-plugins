@@ -38,6 +38,7 @@
   },
   "dependencies": {
     "@stoprocent/noble": "^2.4.0",
+    "@whois-homebridge/shared": "workspace:*",
     "fakegato-history": "^0.6.4"
   },
   "devDependencies": {

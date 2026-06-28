@@ -1,0 +1,33 @@
+{
+  "name": "@whois-homebridge/shared",
+  "version": "0.1.0",
+  "description": "Shared utilities for @whois-homebridge plugins",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "rimraf ./dist && tsc",
+    "prepublishOnly": "npm run build"
+  },
+  "author": "whoiscadenyoung",
+  "license": "MIT",
+  "homepage": "https://github.com/whoiscadenyoung/homebridge-plugins#readme",
+  "bugs": {
+    "url": "https://github.com/whoiscadenyoung/homebridge-plugins/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/whoiscadenyoung/homebridge-plugins.git"
+  },
+  "files": [
+    "dist/",
+    "LICENSE"
+  ],
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "rimraf": "^5.0.0",
+    "typescript": "^5.3.0"
+  }
+}

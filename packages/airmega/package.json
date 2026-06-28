@@ -36,6 +36,7 @@
     "homebridge"
   ],
   "dependencies": {
+    "@whois-homebridge/shared": "workspace:*",
     "axios": "^1.18.1"
   },
   "devDependencies": {

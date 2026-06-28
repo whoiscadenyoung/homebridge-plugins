@@ -6,6 +6,7 @@ import {
 import { PLATFORM_NAME, PLUGIN_NAME, DEFAULT_POLL_SECONDS } from './settings';
 import { CowayClient } from './api/cowayClient';
 import { AirPurifierAccessory } from './accessories/airPurifier';
+import { SupabaseConfig, checkConnection } from '@whois-homebridge/shared';
 
 export interface AirmegaConfig extends PlatformConfig {
   username: string;
@@ -13,6 +14,7 @@ export interface AirmegaConfig extends PlatformConfig {
   skipPasswordChange?: boolean;
   pollingInterval?: number;
   exposeLight?: boolean;
+  supabase?: SupabaseConfig;
 }
 
 export class AirmegaPlatform implements DynamicPlatformPlugin {
@@ -28,6 +30,7 @@ export class AirmegaPlatform implements DynamicPlatformPlugin {
   public readonly client!: CowayClient;
   private readonly pollingInterval: number;
   private readonly configured: boolean;
+  readonly supabaseConfig: SupabaseConfig | undefined;
 
   constructor(
     public readonly log: Logger,
@@ -45,6 +48,8 @@ export class AirmegaPlatform implements DynamicPlatformPlugin {
     const rawPoll = Number(config?.pollingInterval);
     const pollSeconds = Number.isFinite(rawPoll) ? Math.max(30, rawPoll) : DEFAULT_POLL_SECONDS;
     this.pollingInterval = pollSeconds * 1000;
+
+    this.supabaseConfig = config.supabase;
 
     if (!config?.username || !config?.password) {
       this.log.error('Username and password are required.');
@@ -83,6 +88,11 @@ export class AirmegaPlatform implements DynamicPlatformPlugin {
     if (!this.configured) {
       return;
     }
+
+    if (this.supabaseConfig) {
+      void checkConnection(this.supabaseConfig, 'airmega_readings', this.log);
+    }
+
     await this.client.login();
     const devices = await this.client.listDevices();
 
@@ -93,11 +103,11 @@ export class AirmegaPlatform implements DynamicPlatformPlugin {
       if (existing) {
         existing.context.device = device;
         this.api.updatePlatformAccessories([existing]);
-        new AirPurifierAccessory(this, existing, this.pollingInterval);
+        new AirPurifierAccessory(this, existing, this.pollingInterval, this.supabaseConfig);
       } else {
         const accessory = new this.api.platformAccessory(device.name, uuid);
         accessory.context.device = device;
-        new AirPurifierAccessory(this, accessory, this.pollingInterval);
+        new AirPurifierAccessory(this, accessory, this.pollingInterval, this.supabaseConfig);
         this.api.registerPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [accessory]);
       }
     }

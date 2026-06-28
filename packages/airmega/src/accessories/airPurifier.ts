@@ -4,6 +4,7 @@ import {
 
 import { AirmegaPlatform } from '../platform';
 import { CowayDevice, DeviceState } from '../api/types';
+import { SupabaseConfig, insertRow } from '@whois-homebridge/shared';
 import {
   Attribute, ModeValue, LightMode,
   PM_CAPABILITIES, PM_CAPABILITIES_UNKNOWN, PmCapabilities,
@@ -44,6 +45,7 @@ export class AirPurifierAccessory {
   private readonly device: CowayDevice;
   private readonly pmCaps: PmCapabilities;
   private readonly presetCaps: PresetCapabilities;
+  private readonly supabaseConfig?: SupabaseConfig;
 
   private readonly purifier: Service;
   private readonly airQuality: Service;
@@ -64,8 +66,10 @@ export class AirPurifierAccessory {
     private readonly platform: AirmegaPlatform,
     private readonly accessory: PlatformAccessory,
     private readonly pollingInterval: number,
+    supabaseConfig?: SupabaseConfig,
   ) {
     this.device = accessory.context.device as CowayDevice;
+    this.supabaseConfig = supabaseConfig;
     this.pmCaps = PM_CAPABILITIES[this.device.productModel] ?? PM_CAPABILITIES_UNKNOWN;
     this.presetCaps = PRESET_CAPABILITIES[this.device.productModel] ?? PRESET_CAPABILITIES_UNKNOWN;
     // PM_CAPABILITIES and PRESET_CAPABILITIES are populated from the same
@@ -335,6 +339,23 @@ export class AirPurifierAccessory {
     this.lightService?.updateCharacteristic(C.On, this.state.lightOn);
 
     this.pushFirmwareRevision(this.state.mcuVersion);
+
+    if (this.supabaseConfig) {
+      const s = this.state;
+      void insertRow(this.supabaseConfig, 'airmega_readings', {
+        device_id:               this.device.deviceId,
+        power:                   s.power,
+        mode:                    s.mode,
+        fan_speed:               s.fanSpeed,
+        light_on:                s.lightOn,
+        air_quality:             s.airQuality,
+        pm25:                    s.pm25                    ?? null,
+        pm10:                    s.pm10                    ?? null,
+        pre_filter_pct:          s.preFilterPct            ?? null,
+        max2_filter_pct:         s.max2FilterPct           ?? null,
+        timer_minutes_remaining: s.timerMinutesRemaining   ?? null,
+      }, this.platform.log);
+    }
   }
 
   /**

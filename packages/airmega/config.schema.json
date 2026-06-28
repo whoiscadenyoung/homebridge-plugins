@@ -41,6 +41,23 @@
         "title": "Expose LED display as a switch",
         "type": "boolean",
         "default": true
+      },
+      "supabase": {
+        "title": "Supabase",
+        "type": "object",
+        "properties": {
+          "url": {
+            "title": "Project URL",
+            "type": "string",
+            "placeholder": "https://yourproject.supabase.co"
+          },
+          "key": {
+            "title": "Secret API Key",
+            "type": "string",
+            "placeholder": "your-service-role-key",
+            "secret": true
+          }
+        }
       }
     }
   }
