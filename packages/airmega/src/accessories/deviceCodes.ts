@@ -69,6 +69,7 @@ export const PM_CAPABILITIES: Record<string, PmCapabilities> = {
   'AP-1521E':   { pm10: true,  pm25: false }, // Airmega 300S
   'AP-1512HHS': { pm10: true,  pm25: false }, // Airmega MightyS
   'AP-1719A':   { pm10: true,  pm25: true  }, // Airmega 250S
+  'AP-1720G':   { pm10: true,  pm25: true  }, // Airmega 250S (new)
   'AP-1722B':   { pm10: false, pm25: true  }, // Airmega IconS
 };
 
@@ -115,6 +116,7 @@ export const PRESET_CAPABILITIES: Record<string, PresetCapabilities> = {
   'AP-1521E':   { sleep: true,  eco: false, smart: false }, // Airmega 300S
   'AP-1512HHS': { sleep: false, eco: true,  smart: false }, // Airmega MightyS
   'AP-1719A':   { sleep: true,  eco: false, smart: true  }, // Airmega 250S
+  'AP-1720G':   { sleep: true,  eco: false, smart: true  }, // Airmega 250S (new)
   'AP-1722B':   { sleep: true,  eco: false, smart: false }, // Airmega IconS
 };
 
