@@ -9,8 +9,8 @@ import {
   DEFAULT_POLLING_INTERVAL,
   STALE_THRESHOLD_MULTIPLIER,
   normalizeAddress,
-} from './settings';
-import { parseAdvertisement } from './aranet4Parser';
+} from './settings.js';
+import { parseAdvertisement } from './aranet4Parser.js';
 
 // ---------------------------------------------------------------------------
 // SAF Tehnika BLE company ID (little-endian in manufacturer data)

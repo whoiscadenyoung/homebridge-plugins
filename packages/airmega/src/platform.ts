@@ -3,10 +3,10 @@ import {
   PlatformConfig, Service, Characteristic,
 } from 'homebridge';
 
-import { PLATFORM_NAME, PLUGIN_NAME, DEFAULT_POLL_SECONDS } from './settings';
-import { CowayClient } from './api/cowayClient';
-import { AirPurifierAccessory } from './accessories/airPurifier';
-import { MqttPublisher } from './mqttPublisher';
+import { PLATFORM_NAME, PLUGIN_NAME, DEFAULT_POLL_SECONDS } from './settings.js';
+import { CowayClient } from './api/cowayClient.js';
+import { AirPurifierAccessory } from './accessories/airPurifier.js';
+import { MqttPublisher } from './mqttPublisher.js';
 
 export interface AirmegaConfig extends PlatformConfig {
   username: string;

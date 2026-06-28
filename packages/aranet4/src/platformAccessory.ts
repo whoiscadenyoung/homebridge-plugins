@@ -13,8 +13,8 @@ import {
   AIR_QUALITY_THRESHOLDS,
   DEFAULT_CO2_ALERT_THRESHOLD,
   DEFAULT_LOW_BATTERY_THRESHOLD,
-} from './settings';
-import { MqttPublisher } from './mqttPublisher';
+} from './settings.js';
+import { MqttPublisher } from './mqttPublisher.js';
 
 // ---------------------------------------------------------------------------
 // Eve-compatible custom characteristic for atmospheric pressure

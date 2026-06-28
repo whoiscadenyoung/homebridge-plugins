@@ -1,9 +1,9 @@
 {
-  "displayName": "Homebridge MQTT Logger",
   "name": "@whois-homebridge/homebridge-mqtt-logger",
-  "version": "0.1.0",
+  "version": "0.3.1",
   "description": "Homebridge plugin that embeds an MQTT broker and routes sensor readings to Supabase.",
   "license": "MIT",
+  "type": "module",
   "homepage": "https://github.com/whoiscadenyoung/homebridge-plugins#readme",
   "publishConfig": {
     "access": "public"
@@ -34,7 +34,7 @@
     "homebridge"
   ],
   "dependencies": {
-    "aedes": "^1.1.0"
+    "aedes": "^0.50.0"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",

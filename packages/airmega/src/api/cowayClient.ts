@@ -3,12 +3,12 @@ import { Logger } from 'homebridge';
 
 import {
   AuthTokens, AuthError, RateLimitedError, performLogin, refreshAccessToken,
-} from './auth';
+} from './auth.js';
 import {
   CATEGORY_NAME, Endpoint, ErrorMessage, Header, Parameter,
-} from './endpoints';
-import { CowayDevice, DeviceState } from './types';
-import { redactBody } from './redact';
+} from './endpoints.js';
+import { CowayDevice, DeviceState } from './types.js';
+import { redactBody } from './redact.js';
 
 export interface CowayClientOptions {
   username: string;

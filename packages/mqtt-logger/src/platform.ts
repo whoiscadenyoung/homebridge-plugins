@@ -11,21 +11,21 @@ import {
   DEFAULT_TOPIC_PREFIX,
   MqttLoggerConfig,
   TOPIC_TABLE_MAP,
-} from './settings';
+} from './settings.js';
 
 // ---------------------------------------------------------------------------
-// Aedes MQTT broker — loaded via require so we avoid esm/cjs interop issues
+// Aedes MQTT broker v0.x — CJS factory function (aedes v1 is ESM-only)
 // ---------------------------------------------------------------------------
 
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const AedesBroker = require('aedes') as new (opts?: object) => {
+type AedesInstance = {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   on(event: string, cb: (...args: any[]) => void): void;
   handle(socket: net.Socket): void;
   close(cb?: () => void): void;
 };
 
-type AedesInstance = InstanceType<typeof AedesBroker>;
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const createBroker = require('aedes') as (opts?: object) => AedesInstance;
 
 // ---------------------------------------------------------------------------
 // Supabase helpers — inlined to avoid workspace:* dependency issues
@@ -130,7 +130,7 @@ export class MqttLoggerPlatform implements DynamicPlatformPlugin {
 
     void checkConnection(this.supabase, 'aranet4_readings', this.log);
 
-    this.broker = new AedesBroker();
+    this.broker = createBroker();
 
     this.broker.on('client', (client: { id: string }) => {
       this.log.info(`[MQTT] Client connected: ${client.id}`);

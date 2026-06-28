@@ -2,8 +2,8 @@ import axios, { AxiosResponse } from 'axios';
 import { Logger } from 'homebridge';
 import { URL, URLSearchParams } from 'url';
 
-import { Endpoint, Parameter, Header, ErrorMessage } from './endpoints';
-import { redactBody, maskEmail } from './redact';
+import { Endpoint, Parameter, Header, ErrorMessage } from './endpoints.js';
+import { redactBody, maskEmail } from './redact.js';
 
 export interface AuthTokens {
   accessToken: string;

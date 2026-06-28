@@ -1,4 +1,4 @@
-import { Aranet4Reading } from './settings';
+import { Aranet4Reading } from './settings.js';
 
 // ---------------------------------------------------------------------------
 // Plausible sensor value ranges for sanity checking.

@@ -1,7 +1,7 @@
 import { API } from 'homebridge';
-import { PLATFORM_NAME, PLUGIN_NAME } from './settings';
-import { MqttLoggerPlatform } from './platform';
+import { PLATFORM_NAME, PLUGIN_NAME } from './settings.js';
+import { MqttLoggerPlatform } from './platform.js';
 
-export = (api: API) => {
+export default function(api: API) {
   api.registerPlatform(PLUGIN_NAME, PLATFORM_NAME, MqttLoggerPlatform);
 };

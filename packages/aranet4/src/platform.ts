@@ -18,10 +18,10 @@ import {
   DEFAULT_LOW_BATTERY_THRESHOLD,
   Aranet4Reading,
   normalizeAddress,
-} from './settings';
-import { BleManager } from './bleManager';
-import { Aranet4Accessory } from './platformAccessory';
-import { MqttPublisher } from './mqttPublisher';
+} from './settings.js';
+import { BleManager } from './bleManager.js';
+import { Aranet4Accessory } from './platformAccessory.js';
+import { MqttPublisher } from './mqttPublisher.js';
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const pkg = require('../package.json');

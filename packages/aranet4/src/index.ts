@@ -1,6 +1,6 @@
 import { API } from 'homebridge';
-import { PLATFORM_NAME, PLUGIN_NAME } from './settings';
-import { Aranet4Platform } from './platform';
+import { PLATFORM_NAME, PLUGIN_NAME } from './settings.js';
+import { Aranet4Platform } from './platform.js';
 
 /**
  * Register the Aranet4 Dynamic Platform Plugin with Homebridge.

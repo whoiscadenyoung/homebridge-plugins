@@ -2,14 +2,14 @@ import {
   PlatformAccessory, Service, CharacteristicValue,
 } from 'homebridge';
 
-import { AirmegaPlatform } from '../platform';
-import { CowayDevice, DeviceState } from '../api/types';
-import { MqttPublisher } from '../mqttPublisher';
+import { AirmegaPlatform } from '../platform.js';
+import { CowayDevice, DeviceState } from '../api/types.js';
+import { MqttPublisher } from '../mqttPublisher.js';
 import {
   Attribute, ModeValue, LightMode,
   PM_CAPABILITIES, PM_CAPABILITIES_UNKNOWN, PmCapabilities,
   PRESET_CAPABILITIES, PRESET_CAPABILITIES_UNKNOWN, PresetCapabilities,
-} from './deviceCodes';
+} from './deviceCodes.js';
 
 interface PresetSpec {
   key: 'sleep' | 'eco' | 'smart';
