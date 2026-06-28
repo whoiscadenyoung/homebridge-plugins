@@ -4,7 +4,7 @@ import {
 
 import { AirmegaPlatform } from '../platform';
 import { CowayDevice, DeviceState } from '../api/types';
-import { SupabaseConfig, insertRow } from '@whois-homebridge/shared';
+import { SupabaseConfig, insertRow } from '../supabaseLogger';
 import {
   Attribute, ModeValue, LightMode,
   PM_CAPABILITIES, PM_CAPABILITIES_UNKNOWN, PmCapabilities,

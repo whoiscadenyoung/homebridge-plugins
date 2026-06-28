@@ -6,7 +6,7 @@ import {
 import { PLATFORM_NAME, PLUGIN_NAME, DEFAULT_POLL_SECONDS } from './settings';
 import { CowayClient } from './api/cowayClient';
 import { AirPurifierAccessory } from './accessories/airPurifier';
-import { SupabaseConfig, checkConnection } from '@whois-homebridge/shared';
+import { SupabaseConfig, checkConnection } from './supabaseLogger';
 
 export interface AirmegaConfig extends PlatformConfig {
   username: string;

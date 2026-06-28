@@ -1,6 +1,6 @@
 {
   "name": "@whois-homebridge/homebridge-aranet4",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "description": "Homebridge plugin for Aranet4 CO2/environment sensor via passive BLE scanning with Eve history support",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -38,7 +38,6 @@
   },
   "dependencies": {
     "@stoprocent/noble": "^2.4.0",
-    "@whois-homebridge/shared": "workspace:*",
     "fakegato-history": "^0.6.4"
   },
   "devDependencies": {

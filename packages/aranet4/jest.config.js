@@ -6,7 +6,4 @@ module.exports = {
   testMatch: ['**/*.test.ts'],
   moduleFileExtensions: ['ts', 'js', 'json'],
   collectCoverageFrom: ['src/**/*.ts', '!src/index.ts'],
-  moduleNameMapper: {
-    '^@whois-homebridge/shared$': '<rootDir>/../shared/src/index.ts',
-  },
 };
