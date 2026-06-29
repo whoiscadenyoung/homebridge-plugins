@@ -1,40 +1,27 @@
-/**
- * Tests for Aranet4Platform (platform.ts)
- *
- * These tests validate platform construction, config parsing, accessory
- * lifecycle, and the purge scheduler using mocked Homebridge API.
- */
+import { mock, describe, it, expect, beforeEach } from 'bun:test';
+import type { API, Logger, PlatformAccessory, PlatformConfig } from 'homebridge';
 
-import { API, Logger, PlatformAccessory, PlatformConfig } from 'homebridge';
-
-// Mock noble before importing platform (noble initializes on import)
-jest.mock('@stoprocent/noble', () => ({
-  on: jest.fn(),
-  removeListener: jest.fn(),
-  startScanning: jest.fn(),
-  stopScanning: jest.fn(),
-  state: 'poweredOff',
+// Mock noble before platform.ts (and its deps) are imported
+mock.module('@stoprocent/noble', () => ({
+  default: {
+    on: mock(),
+    removeListener: mock(),
+    startScanning: mock(),
+    stopScanning: mock(),
+    state: 'poweredOff',
+  },
 }));
 
-// Mock fakegato-history
-jest.mock('fakegato-history', () => {
-  return jest.fn(() => jest.fn());
-}, { virtual: true });
-
-import { Aranet4Platform } from '../src/platform';
-
-// ---------------------------------------------------------------------------
-// Mock helpers
-// ---------------------------------------------------------------------------
+const { Aranet4Platform } = await import('../src/platform.js');
 
 function createMockLogger(): Logger {
   return {
-    info: jest.fn(),
-    warn: jest.fn(),
-    error: jest.fn(),
-    debug: jest.fn(),
-    log: jest.fn(),
-    success: jest.fn(),
+    info: mock(),
+    warn: mock(),
+    error: mock(),
+    debug: mock(),
+    log: mock(),
+    success: mock(),
   } as unknown as Logger;
 }
 
@@ -55,46 +42,42 @@ function createMockAPI(): API {
         Model: 'Model',
         SerialNumber: 'SerialNumber',
       },
-      uuid: { generate: jest.fn((id: string) => `uuid-${id}`) },
+      uuid: { generate: mock((id: string) => `uuid-${id}`) },
       Formats: { UINT16: 'uint16' },
       Perms: { PAIRED_READ: 'pr', NOTIFY: 'ev' },
     },
     user: {
-      storagePath: jest.fn().mockReturnValue('/tmp/homebridge-test'),
+      storagePath: mock().mockReturnValue('/tmp/homebridge-test'),
     },
-    on: jest.fn((event: string, handler: () => void) => {
+    on: mock().mockImplementation((event: string, handler: () => void) => {
       if (!eventHandlers.has(event)) {
         eventHandlers.set(event, []);
       }
       eventHandlers.get(event)!.push(handler);
     }),
-    registerPlatformAccessories: jest.fn(),
-    unregisterPlatformAccessories: jest.fn(),
-    platformAccessory: jest.fn().mockImplementation((name: string, uuid: string) => ({
+    registerPlatformAccessories: mock(),
+    unregisterPlatformAccessories: mock(),
+    platformAccessory: mock().mockImplementation((name: string, uuid: string) => ({
       displayName: name,
       UUID: uuid,
       context: {},
-      getService: jest.fn(),
-      getServiceById: jest.fn(),
-      addService: jest.fn().mockReturnValue({
-        getCharacteristic: jest.fn().mockReturnValue({
-          onGet: jest.fn().mockReturnThis(),
-          updateValue: jest.fn(),
+      getService: mock(),
+      getServiceById: mock(),
+      addService: mock().mockReturnValue({
+        getCharacteristic: mock().mockReturnValue({
+          onGet: mock().mockReturnThis(),
+          updateValue: mock(),
         }),
-        updateCharacteristic: jest.fn(),
-        addCharacteristic: jest.fn().mockReturnValue({
-          onGet: jest.fn().mockReturnThis(),
-          updateValue: jest.fn(),
+        updateCharacteristic: mock(),
+        addCharacteristic: mock().mockReturnValue({
+          onGet: mock().mockReturnThis(),
+          updateValue: mock(),
         }),
       }),
     })),
     _eventHandlers: eventHandlers,
   } as unknown as API & { _eventHandlers: Map<string, (() => void)[]> };
 }
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
 
 describe('Aranet4Platform', () => {
   let log: Logger;

@@ -1,60 +1,49 @@
-/**
- * Integration test harness for the BLE layer using mocked noble.
- *
- * These tests verify that the BleManager correctly:
- *  - Starts and stops scanning
- *  - Discovers Aranet4 devices by advertisement manufacturer data
- *  - Ignores non-Aranet4 devices
- *  - Invokes the reading callback on valid advertisement
- *  - Throttles readings based on polling interval
- *  - Warns when device has no manufacturer data
- */
-
+import { mock, jest, describe, it, expect, beforeEach, afterEach } from 'bun:test';
+import type { Mock } from 'bun:test';
 import { EventEmitter } from 'events';
+import { DEFAULT_POLLING_INTERVAL } from '../src/settings.js';
+import type { Aranet4DeviceConfig } from '../src/settings.js';
 
 // ---------------------------------------------------------------------------
-// Mock noble before importing BleManager
+// Noble mock
 // ---------------------------------------------------------------------------
 
-const mockNoble = new EventEmitter() as EventEmitter & {
+// noble is set inside the module factory so it exists before BleManager loads it
+let noble: EventEmitter & {
   state: string;
-  startScanning: jest.Mock;
-  stopScanning: jest.Mock;
+  startScanning: Mock;
+  stopScanning: Mock;
 };
-mockNoble.state = 'poweredOff';
-mockNoble.startScanning = jest.fn((_uuids: string[], _dup: boolean, cb?: (err?: Error) => void) => {
-  if (cb) {
-    cb();
-  }
+
+mock.module('@stoprocent/noble', () => {
+  noble = Object.assign(new EventEmitter(), {
+    state: 'poweredOff',
+    startScanning: mock((_uuids: string[], _dup: boolean, cb?: (err?: Error) => void) => {
+      if (cb) cb();
+    }),
+    stopScanning: mock(),
+  });
+  return { default: noble };
 });
-mockNoble.stopScanning = jest.fn();
 
-jest.mock('@stoprocent/noble', () => mockNoble);
+// Dynamic import so bleManager picks up the mock above
+const { BleManager } = await import('../src/bleManager.js');
 
-import { BleManager } from '../src/bleManager';
-import { Aranet4DeviceConfig, DEFAULT_POLLING_INTERVAL } from '../src/settings';
+// ---------------------------------------------------------------------------
+// Shared mock log
+// ---------------------------------------------------------------------------
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const mockLog: any = {
-  info: jest.fn(),
-  warn: jest.fn(),
-  error: jest.fn(),
-  debug: jest.fn(),
+const mockLog = {
+  info: mock(),
+  warn: mock(),
+  error: mock(),
+  debug: mock(),
 };
 
-/**
- * Build a mock manufacturer data buffer matching the real Aranet4 layout:
- *   Bytes 0–1  : Company ID (0x0702)
- *   Bytes 2–9  : Header (flags, firmware version, device type, padding)
- *   Bytes 10–11: CO2 (uint16 LE)
- *   Bytes 12–13: Temperature raw (uint16 LE, ÷ 20 = °C)
- *   Bytes 14–15: Pressure raw (uint16 LE, ÷ 10 = hPa)
- *   Byte  16   : Humidity (uint8)
- *   Byte  17   : Battery (uint8)
- *   Byte  18   : Status (uint8)
- *   Bytes 19–20: Interval (uint16 LE)
- *   Bytes 21–22: Age (uint16 LE)
- */
+// ---------------------------------------------------------------------------
+// Buffer helpers
+// ---------------------------------------------------------------------------
+
 function buildMfgData(opts: {
   co2?: number;
   tempRaw?: number;
@@ -66,25 +55,24 @@ function buildMfgData(opts: {
   age?: number;
 } = {}): Buffer {
   const co2 = opts.co2 ?? 650;
-  const tempRaw = opts.tempRaw ?? 440;       // 22.0°C
+  const tempRaw = opts.tempRaw ?? 440;
   const humidity = opts.humidity ?? 50;
   const battery = opts.battery ?? 90;
   const status = opts.status ?? 0;
-  const pressureRaw = opts.pressureRaw ?? 10130; // 1013.0 hPa
+  const pressureRaw = opts.pressureRaw ?? 10130;
   const interval = opts.interval ?? 60;
   const age = opts.age ?? 5;
 
   const buf = Buffer.alloc(23);
-  buf.writeUInt16LE(0x0702, 0);           // Company ID
-  // Bytes 2–9: header (zeros)
-  buf.writeUInt16LE(co2, 10);             // CO2
-  buf.writeUInt16LE(tempRaw, 12);         // Temperature raw
-  buf.writeUInt16LE(pressureRaw, 14);     // Pressure raw
-  buf.writeUInt8(humidity, 16);           // Humidity
-  buf.writeUInt8(battery, 17);            // Battery
-  buf.writeUInt8(status, 18);             // Status
-  buf.writeUInt16LE(interval, 19);        // Interval
-  buf.writeUInt16LE(age, 21);             // Age
+  buf.writeUInt16LE(0x0702, 0);
+  buf.writeUInt16LE(co2, 10);
+  buf.writeUInt16LE(tempRaw, 12);
+  buf.writeUInt16LE(pressureRaw, 14);
+  buf.writeUInt8(humidity, 16);
+  buf.writeUInt8(battery, 17);
+  buf.writeUInt8(status, 18);
+  buf.writeUInt16LE(interval, 19);
+  buf.writeUInt16LE(age, 21);
   return buf;
 }
 
@@ -99,8 +87,12 @@ function createMockPeripheral(name: string, id: string, mfgData?: Buffer) {
   };
 }
 
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
 describe('BleManager', () => {
-  let manager: BleManager;
+  let manager: InstanceType<typeof BleManager>;
   const defaultConfig: Aranet4DeviceConfig = {
     name: 'Aranet4',
     pollingInterval: DEFAULT_POLLING_INTERVAL,
@@ -110,9 +102,19 @@ describe('BleManager', () => {
   };
 
   beforeEach(() => {
-    jest.clearAllMocks();
-    mockNoble.state = 'poweredOff';
-    mockNoble.removeAllListeners();
+    // Reset noble to default state and clear call history
+    noble.state = 'poweredOff';
+    noble.removeAllListeners();
+    noble.startScanning.mockClear();
+    noble.startScanning.mockImplementation((_uuids: string[], _dup: boolean, cb?: (err?: Error) => void) => {
+      if (cb) cb();
+    });
+    noble.stopScanning.mockClear();
+    mockLog.info.mockClear();
+    mockLog.warn.mockClear();
+    mockLog.error.mockClear();
+    mockLog.debug.mockClear();
+
     manager = new BleManager(mockLog, [defaultConfig]);
   });
 
@@ -122,94 +124,83 @@ describe('BleManager', () => {
 
   it('should start scanning when Bluetooth powers on', () => {
     manager.start();
-    mockNoble.state = 'poweredOn';
-    mockNoble.emit('stateChange', 'poweredOn');
+    noble.state = 'poweredOn';
+    noble.emit('stateChange', 'poweredOn');
 
-    expect(mockNoble.startScanning).toHaveBeenCalledWith([], true, expect.any(Function));
+    expect(noble.startScanning).toHaveBeenCalledWith([], true, expect.any(Function));
   });
 
   it('should not scan when Bluetooth is powered off', () => {
     manager.start();
-    mockNoble.emit('stateChange', 'poweredOff');
+    noble.emit('stateChange', 'poweredOff');
 
-    expect(mockNoble.startScanning).not.toHaveBeenCalled();
+    expect(noble.startScanning).not.toHaveBeenCalled();
   });
 
   it('should stop scanning on shutdown', () => {
     manager.start();
-    mockNoble.state = 'poweredOn';
-    mockNoble.emit('stateChange', 'poweredOn');
+    noble.state = 'poweredOn';
+    noble.emit('stateChange', 'poweredOn');
     manager.shutdown();
 
-    expect(mockNoble.stopScanning).toHaveBeenCalled();
+    expect(noble.stopScanning).toHaveBeenCalled();
   });
 
   it('should discover Aranet4 devices by advertisement manufacturer data', () => {
-    const readingCallback = jest.fn();
+    const readingCallback = mock();
     manager.onReading(readingCallback);
     manager.start();
 
-    mockNoble.state = 'poweredOn';
-    mockNoble.emit('stateChange', 'poweredOn');
+    noble.state = 'poweredOn';
+    noble.emit('stateChange', 'poweredOn');
 
     const mfgData = buildMfgData({ co2: 650, humidity: 50, battery: 90 });
     const peripheral = createMockPeripheral('Aranet4 Home', 'aabbccddeeff', mfgData);
-    mockNoble.emit('discover', peripheral);
+    noble.emit('discover', peripheral);
 
     expect(readingCallback).toHaveBeenCalledWith(
       'aabbccddeeff',
-      expect.objectContaining({
-        co2: 650,
-        humidity: 50,
-        battery: 90,
-      }),
+      expect.objectContaining({ co2: 650, humidity: 50, battery: 90 }),
     );
   });
 
   it('should ignore non-Aranet4 devices', () => {
-    const readingCallback = jest.fn();
+    const readingCallback = mock();
     manager.onReading(readingCallback);
     manager.start();
 
-    mockNoble.state = 'poweredOn';
-    mockNoble.emit('stateChange', 'poweredOn');
+    noble.state = 'poweredOn';
+    noble.emit('stateChange', 'poweredOn');
 
-    // Different company ID
     const buf = Buffer.alloc(10);
-    buf.writeUInt16LE(0x1234, 0); // Not SAF Tehnika
-    const peripheral = createMockPeripheral('SomeOtherSensor', '112233445566', buf);
-    mockNoble.emit('discover', peripheral);
+    buf.writeUInt16LE(0x1234, 0);
+    noble.emit('discover', createMockPeripheral('SomeOtherSensor', '112233445566', buf));
 
     expect(readingCallback).not.toHaveBeenCalled();
   });
 
   it('should throttle readings based on polling interval', () => {
-    const readingCallback = jest.fn();
+    const readingCallback = mock();
     manager.onReading(readingCallback);
     manager.start();
 
-    mockNoble.state = 'poweredOn';
-    mockNoble.emit('stateChange', 'poweredOn');
+    noble.state = 'poweredOn';
+    noble.emit('stateChange', 'poweredOn');
 
-    const mfgData = buildMfgData();
-    const peripheral = createMockPeripheral('Aranet4 Home', 'aabbccddeeff', mfgData);
-
-    // First advertisement — should emit
-    mockNoble.emit('discover', peripheral);
+    const peripheral = createMockPeripheral('Aranet4 Home', 'aabbccddeeff', buildMfgData());
+    noble.emit('discover', peripheral);
     expect(readingCallback).toHaveBeenCalledTimes(1);
 
-    // Immediate second advertisement — should be throttled
-    mockNoble.emit('discover', peripheral);
+    noble.emit('discover', peripheral);
     expect(readingCallback).toHaveBeenCalledTimes(1);
   });
 
   it('should warn when Aranet4 found by name but without manufacturer data', () => {
     manager.start();
-    mockNoble.state = 'poweredOn';
-    mockNoble.emit('stateChange', 'poweredOn');
+    noble.state = 'poweredOn';
+    noble.emit('stateChange', 'poweredOn');
 
-    const peripheral = createMockPeripheral('Aranet4 Home', 'aabbccddeeff');
-    mockNoble.emit('discover', peripheral);
+    noble.emit('discover', createMockPeripheral('Aranet4 Home', 'aabbccddeeff'));
 
     expect(mockLog.warn).toHaveBeenCalledWith(
       expect.stringContaining('Smart Home integrations'),
@@ -218,41 +209,32 @@ describe('BleManager', () => {
 
   it('should not warn again for the same device without manufacturer data', () => {
     manager.start();
-    mockNoble.state = 'poweredOn';
-    mockNoble.emit('stateChange', 'poweredOn');
+    noble.state = 'poweredOn';
+    noble.emit('stateChange', 'poweredOn');
 
     const peripheral = createMockPeripheral('Aranet4 Home', 'aabbccddeeff');
-    mockNoble.emit('discover', peripheral);
-    mockNoble.emit('discover', peripheral);
+    noble.emit('discover', peripheral);
+    noble.emit('discover', peripheral);
 
-    // Only one warning, not two
     const warnCalls = mockLog.warn.mock.calls.filter(
-      (c: string[]) => c[0]?.includes('Smart Home integrations'),
+      (c: unknown[]) => typeof c[0] === 'string' && c[0].includes('Smart Home integrations'),
     );
     expect(warnCalls).toHaveLength(1);
   });
 
-  // -----------------------------------------------------------------------
-  // Scan resilience
-  // -----------------------------------------------------------------------
-
   it('should restart scanning after unexpected scanStop', () => {
     jest.useFakeTimers();
     manager.start();
-    mockNoble.state = 'poweredOn';
-    mockNoble.emit('stateChange', 'poweredOn');
+    noble.state = 'poweredOn';
+    noble.emit('stateChange', 'poweredOn');
 
-    expect(mockNoble.startScanning).toHaveBeenCalledTimes(1);
+    expect(noble.startScanning).toHaveBeenCalledTimes(1);
 
-    // Simulate unexpected scan stop
-    mockNoble.emit('scanStop');
+    noble.emit('scanStop');
+    expect(noble.startScanning).toHaveBeenCalledTimes(1);
 
-    // Should not restart immediately
-    expect(mockNoble.startScanning).toHaveBeenCalledTimes(1);
-
-    // After debounce delay, should restart
     jest.advanceTimersByTime(3000);
-    expect(mockNoble.startScanning).toHaveBeenCalledTimes(2);
+    expect(noble.startScanning).toHaveBeenCalledTimes(2);
 
     jest.useRealTimers();
   });
@@ -260,18 +242,15 @@ describe('BleManager', () => {
   it('should debounce rapid scanStop events', () => {
     jest.useFakeTimers();
     manager.start();
-    mockNoble.state = 'poweredOn';
-    mockNoble.emit('stateChange', 'poweredOn');
+    noble.state = 'poweredOn';
+    noble.emit('stateChange', 'poweredOn');
 
-    // Rapid-fire scanStop events (noble issue #569)
-    mockNoble.emit('scanStop');
-    mockNoble.emit('scanStop');
-    mockNoble.emit('scanStop');
+    noble.emit('scanStop');
+    noble.emit('scanStop');
+    noble.emit('scanStop');
 
     jest.advanceTimersByTime(3000);
-
-    // Should only restart once, not three times
-    expect(mockNoble.startScanning).toHaveBeenCalledTimes(2);
+    expect(noble.startScanning).toHaveBeenCalledTimes(2);
 
     jest.useRealTimers();
   });
@@ -279,37 +258,31 @@ describe('BleManager', () => {
   it('should retry scan start on failure with backoff', () => {
     jest.useFakeTimers();
 
-    // Make startScanning fail
-    mockNoble.startScanning.mockImplementation(
+    noble.startScanning.mockImplementation(
       (_uuids: string[], _dup: boolean, cb?: (err?: Error) => void) => {
-        if (cb) {
-          cb(new Error('BLE adapter busy'));
-        }
+        if (cb) cb(new Error('BLE adapter busy'));
       },
     );
 
     manager.start();
-    mockNoble.state = 'poweredOn';
-    mockNoble.emit('stateChange', 'poweredOn');
+    noble.state = 'poweredOn';
+    noble.emit('stateChange', 'poweredOn');
 
-    // First attempt fails
-    expect(mockNoble.startScanning).toHaveBeenCalledTimes(1);
+    expect(noble.startScanning).toHaveBeenCalledTimes(1);
     expect(mockLog.error).toHaveBeenCalledWith(expect.stringContaining('BLE scan start failed'));
 
-    // After 5s retry delay
     jest.advanceTimersByTime(5000);
-    expect(mockNoble.startScanning).toHaveBeenCalledTimes(2);
+    expect(noble.startScanning).toHaveBeenCalledTimes(2);
 
-    // After 10s (doubled backoff)
     jest.advanceTimersByTime(10000);
-    expect(mockNoble.startScanning).toHaveBeenCalledTimes(3);
+    expect(noble.startScanning).toHaveBeenCalledTimes(3);
 
     jest.useRealTimers();
   });
 
   it('should log error on unauthorized Bluetooth state', () => {
     manager.start();
-    mockNoble.emit('stateChange', 'unauthorized');
+    noble.emit('stateChange', 'unauthorized');
 
     expect(mockLog.error).toHaveBeenCalledWith(
       expect.stringContaining('Bluetooth access denied'),
@@ -318,57 +291,45 @@ describe('BleManager', () => {
 
   it('should only log unauthorized warning once', () => {
     manager.start();
-    mockNoble.emit('stateChange', 'unauthorized');
-    mockNoble.emit('stateChange', 'unauthorized');
+    noble.emit('stateChange', 'unauthorized');
+    noble.emit('stateChange', 'unauthorized');
 
     const errorCalls = mockLog.error.mock.calls.filter(
-      (c: string[]) => c[0]?.includes('Bluetooth access denied'),
+      (c: unknown[]) => typeof c[0] === 'string' && c[0].includes('Bluetooth access denied'),
     );
     expect(errorCalls).toHaveLength(1);
   });
 
-  // -----------------------------------------------------------------------
-  // Stale device detection
-  // -----------------------------------------------------------------------
-
   it('should fire stale callback when device stops advertising', () => {
     jest.useFakeTimers();
-    const staleCallback = jest.fn();
+    const staleCallback = mock();
     manager.onStale(staleCallback);
     manager.start();
 
-    mockNoble.state = 'poweredOn';
-    mockNoble.emit('stateChange', 'poweredOn');
+    noble.state = 'poweredOn';
+    noble.emit('stateChange', 'poweredOn');
 
-    // Discover a device
-    const mfgData = buildMfgData();
-    const peripheral = createMockPeripheral('Aranet4 Home', 'aabbccddeeff', mfgData);
-    mockNoble.emit('discover', peripheral);
-
-    // Advance past the stale threshold (pollingInterval × 5 = 300s)
+    noble.emit('discover', createMockPeripheral('Aranet4 Home', 'aabbccddeeff', buildMfgData()));
     jest.advanceTimersByTime(6 * 60_000);
 
     expect(staleCallback).toHaveBeenCalledWith('aabbccddeeff');
+
+    jest.useRealTimers();
   });
 
   it('should only fire stale callback once per device until it recovers', () => {
     jest.useFakeTimers();
-    const staleCallback = jest.fn();
+    const staleCallback = mock();
     manager.onStale(staleCallback);
     manager.start();
 
-    mockNoble.state = 'poweredOn';
-    mockNoble.emit('stateChange', 'poweredOn');
+    noble.state = 'poweredOn';
+    noble.emit('stateChange', 'poweredOn');
 
-    const mfgData = buildMfgData();
-    const peripheral = createMockPeripheral('Aranet4 Home', 'aabbccddeeff', mfgData);
-    mockNoble.emit('discover', peripheral);
-
-    // Go stale
+    noble.emit('discover', createMockPeripheral('Aranet4 Home', 'aabbccddeeff', buildMfgData()));
     jest.advanceTimersByTime(6 * 60_000);
     expect(staleCallback).toHaveBeenCalledTimes(1);
 
-    // More time passes — should not fire again
     jest.advanceTimersByTime(6 * 60_000);
     expect(staleCallback).toHaveBeenCalledTimes(1);
 

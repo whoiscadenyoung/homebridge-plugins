@@ -1,38 +1,29 @@
-/**
- * Tests for Aranet4Accessory (platformAccessory.ts)
- *
- * These tests validate HomeKit service setup, characteristic updates,
- * CO2→AirQuality mapping through the accessory, and fault marking.
- */
+import { mock, describe, it, expect, beforeEach } from 'bun:test';
+import type { Mock } from 'bun:test';
+import type { API, HAP, Logger, PlatformAccessory, Service } from 'homebridge';
+import { Aranet4Accessory } from '../src/platformAccessory.js';
+import type { Aranet4DeviceConfig, Aranet4Reading } from '../src/settings.js';
 
-import { API, HAP, Logger, PlatformAccessory, Service } from 'homebridge';
-import { Aranet4Accessory } from '../src/platformAccessory';
-import { Aranet4DeviceConfig, Aranet4Reading } from '../src/settings';
-
-// ---------------------------------------------------------------------------
-// Mock helpers
-// ---------------------------------------------------------------------------
-
-function createMockCharacteristic(): Record<string, jest.Mock> {
+function createMockCharacteristic(): Record<string, Mock> {
   return {
-    onGet: jest.fn().mockReturnThis(),
-    updateValue: jest.fn().mockReturnThis(),
-    setValue: jest.fn().mockReturnThis(),
+    onGet: mock().mockReturnThis(),
+    updateValue: mock().mockReturnThis(),
+    setValue: mock().mockReturnThis(),
   };
 }
 
-function createMockService(): Partial<Service> & { getCharacteristic: jest.Mock; updateCharacteristic: jest.Mock; addCharacteristic: jest.Mock } {
-  const chars = new Map<string, Record<string, jest.Mock>>();
+function createMockService(): Partial<Service> & { getCharacteristic: Mock; updateCharacteristic: Mock; addCharacteristic: Mock } {
+  const chars = new Map<string, Record<string, Mock>>();
   return {
-    getCharacteristic: jest.fn().mockImplementation((charType) => {
+    getCharacteristic: mock().mockImplementation((charType) => {
       const key = typeof charType === 'string' ? charType : charType?.UUID ?? 'unknown';
       if (!chars.has(key)) {
         chars.set(key, createMockCharacteristic());
       }
       return chars.get(key);
     }),
-    updateCharacteristic: jest.fn(),
-    addCharacteristic: jest.fn().mockImplementation(() => createMockCharacteristic()),
+    updateCharacteristic: mock(),
+    addCharacteristic: mock().mockImplementation(() => createMockCharacteristic()),
   };
 }
 
@@ -74,32 +65,29 @@ function createMockHAP(): HAP {
     },
     Formats: { UINT16: 'uint16' },
     Perms: { PAIRED_READ: 'pr', NOTIFY: 'ev' },
-    uuid: { generate: jest.fn((id: string) => `uuid-${id}`) },
+    uuid: { generate: mock((id: string) => `uuid-${id}`) },
   } as unknown as HAP;
 }
 
 function createMockAccessory(): PlatformAccessory {
-  // Pre-create the AccessoryInformation service (Homebridge always provides this)
   const infoService = createMockService();
-  (infoService as unknown as { setCharacteristic: jest.Mock }).setCharacteristic = jest.fn().mockReturnThis();
+  (infoService as unknown as { setCharacteristic: Mock }).setCharacteristic = mock().mockReturnThis();
 
   return {
     UUID: 'test-uuid-123456789012',
     displayName: 'Test Aranet4',
     context: { deviceId: 'aabbccddee' },
-    getService: jest.fn().mockImplementation((type: { UUID?: string } | string) => {
+    getService: mock().mockImplementation((type: { UUID?: string } | string) => {
       const key = typeof type === 'string' ? type : type?.UUID ?? 'unknown';
       if (key === 'AccessoryInformation') {
         return infoService;
       }
       return null;
     }),
-    getServiceById: jest.fn().mockImplementation((_type: unknown, _subtype: string) => {
-      return null; // Force creation of new services
-    }),
-    addService: jest.fn().mockImplementation(() => {
+    getServiceById: mock().mockImplementation((_type: unknown, _subtype: string) => null),
+    addService: mock().mockImplementation(() => {
       const svc = createMockService();
-      (svc as unknown as { setCharacteristic: jest.Mock }).setCharacteristic = jest.fn().mockReturnThis();
+      (svc as unknown as { setCharacteristic: Mock }).setCharacteristic = mock().mockReturnThis();
       return svc;
     }),
   } as unknown as PlatformAccessory;
@@ -107,12 +95,12 @@ function createMockAccessory(): PlatformAccessory {
 
 function createMockLogger(): Logger {
   return {
-    info: jest.fn(),
-    warn: jest.fn(),
-    error: jest.fn(),
-    debug: jest.fn(),
-    log: jest.fn(),
-    success: jest.fn(),
+    info: mock(),
+    warn: mock(),
+    error: mock(),
+    debug: mock(),
+    log: mock(),
+    success: mock(),
   } as unknown as Logger;
 }
 
@@ -143,10 +131,6 @@ const defaultConfig: Aranet4DeviceConfig = {
   enableHistory: false,
 };
 
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
-
 describe('Aranet4Accessory', () => {
   let hap: HAP;
   let api: API;
@@ -166,22 +150,18 @@ describe('Aranet4Accessory', () => {
   it('should create all required services on construction', () => {
     const accessory = createMockAccessory();
     new Aranet4Accessory(log, api, accessory, defaultConfig);
-    // addService should have been called for CO2, Temperature, Humidity, AirQuality, Battery
     expect(accessory.addService).toHaveBeenCalledTimes(5);
   });
 
   it('should update all characteristics when updateReading is called', () => {
     const accessory = createMockAccessory();
     const aranet = new Aranet4Accessory(log, api, accessory, defaultConfig);
-    const reading = makeReading();
-
-    expect(() => aranet.updateReading(reading)).not.toThrow();
+    expect(() => aranet.updateReading(makeReading())).not.toThrow();
   });
 
   it('should mark sensor as inactive when setFault is called', () => {
     const accessory = createMockAccessory();
     const aranet = new Aranet4Accessory(log, api, accessory, defaultConfig);
-
     expect(() => aranet.setFault()).not.toThrow();
   });
 });
