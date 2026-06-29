@@ -105,19 +105,19 @@ export class MqttLoggerPlatform implements DynamicPlatformPlugin {
     this.port = cfg.port ?? DEFAULT_PORT;
     this.topicPrefix = cfg.topicPrefix ?? DEFAULT_TOPIC_PREFIX;
 
-    this.api.on('didFinishLaunching', () => this.startBroker());
+    this.api.on('didFinishLaunching', () => { void this.startBroker(); });
     this.api.on('shutdown', () => this.shutdown());
   }
 
   // Required by DynamicPlatformPlugin — this plugin registers no accessories
   configureAccessory(_accessory: PlatformAccessory): void {}
 
-  private startBroker(): void {
+  private async startBroker(): Promise<void> {
     if (!this.supabase.url) return;
 
     void checkConnection(this.supabase, 'aranet4_readings', this.log);
 
-    this.broker = new Aedes();
+    this.broker = await Aedes.createBroker();
 
     this.broker.on('client', (client) => {
       this.log.info(`[MQTT] Client connected: ${client.id}`);
