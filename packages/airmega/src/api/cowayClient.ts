@@ -502,21 +502,22 @@ function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-// --- HTML scrape and state-assembly helpers (module-private) ---
+// --- HTML scrape and state-assembly helpers ---
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-type AnyObj = Record<string, any>;
- 
+export type AnyObj = Record<string, any>;
+
 type PurifierScrape = AnyObj;
 
-interface SuppliesEntry {
+// Exported for testing — not part of the public plugin API.
+export interface SuppliesEntry {
   supplyNm?: string;
   filterRemain?: number;
   replaceCycle?: number;
 }
 
 /**
- * The Airmega state HTML has a single <script> tag whose body contains the
+ * The Airmega state HTML has a single &lt;script&gt; tag whose body contains the
  * product page's full JSON state model. cowayaio targets it via
  * `script:-soup-contains("sensorInfo")` and slices from first `{` to last `}`.
  *
@@ -532,8 +533,10 @@ interface SuppliesEntry {
  * Both attempts run a reviver that drops `__proto__` / `constructor` /
  * `prototype` keys to block prototype-pollution gadgets in case the input is
  * tampered with despite our TLS + host-validation defenses.
+ *
+ * Exported for testing.
  */
-function extractPurifierJsonFromHtml(html: string): PurifierScrape | null {
+export function extractPurifierJsonFromHtml(html: string): PurifierScrape | null {
   const scriptRe = /<script\b[^>]*>([\s\S]*?)<\/script>/gi;
   let match: RegExpExecArray | null;
   while ((match = scriptRe.exec(html)) !== null) {
@@ -559,12 +562,8 @@ function extractPurifierJsonFromHtml(html: string): PurifierScrape | null {
 
 const DANGEROUS_JSON_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
 
-/**
- * `JSON.parse` with a reviver that strips keys commonly used in
- * prototype-pollution exploits. Returns null if the input doesn't parse —
- * the caller decides whether to fall back to a different decoding strategy.
- */
-function safeJsonParse(text: string): unknown {
+/** Exported for testing. */
+export function safeJsonParse(text: string): unknown {
   try {
     return JSON.parse(text, (key, value) => {
       if (DANGEROUS_JSON_KEYS.has(key)) return undefined;
@@ -575,7 +574,7 @@ function safeJsonParse(text: string): unknown {
   }
 }
 
-function findFirstObject(arr: unknown): AnyObj | null {
+export function findFirstObject(arr: unknown): AnyObj | null {
   if (!Array.isArray(arr)) return null;
   for (const item of arr) {
     if (item && typeof item === 'object' && !Array.isArray(item)) {
@@ -585,7 +584,7 @@ function findFirstObject(arr: unknown): AnyObj | null {
   return null;
 }
 
-function readPath<T>(obj: AnyObj | null | undefined, path: string): T | undefined {
+export function readPath<T>(obj: AnyObj | null | undefined, path: string): T | undefined {
   if (!obj) return undefined;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let cur: any = obj;
@@ -596,11 +595,8 @@ function readPath<T>(obj: AnyObj | null | undefined, path: string): T | undefine
   return cur as T | undefined;
 }
 
-/**
- * Walk purifier_info.coreData[*] and find the entry whose `data` carries a
- * `sensorInfo` block, then return its `attributes`. cowayaio does the same.
- */
-function findSensorAttributes(purifierInfo: AnyObj): AnyObj {
+/** Exported for testing. */
+export function findSensorAttributes(purifierInfo: AnyObj): AnyObj {
   const coreData = purifierInfo?.coreData;
   if (!Array.isArray(coreData)) return {};
   for (const entry of coreData) {
@@ -612,11 +608,8 @@ function findSensorAttributes(purifierInfo: AnyObj): AnyObj {
   return {};
 }
 
-/**
- * Walk purifier_info.coreData[*] for the entry whose `data` carries
- * `currentMcuVer`. cowayaio reports this as the device's firmware version.
- */
-function findMcuVersion(purifierInfo: AnyObj): string | undefined {
+/** Exported for testing. */
+export function findMcuVersion(purifierInfo: AnyObj): string | undefined {
   const coreData = purifierInfo?.coreData;
   if (!Array.isArray(coreData)) return undefined;
   for (const entry of coreData) {
@@ -626,7 +619,7 @@ function findMcuVersion(purifierInfo: AnyObj): string | undefined {
   return undefined;
 }
 
-function modeFromRegister(value: unknown): DeviceState['mode'] {
+export function modeFromRegister(value: unknown): DeviceState['mode'] {
   switch (value) {
     case 1: return 'auto';
     case 2: return 'night';
@@ -636,20 +629,20 @@ function modeFromRegister(value: unknown): DeviceState['mode'] {
   }
 }
 
-function aqLevelFromGrade(grade: unknown): DeviceState['airQuality'] {
+export function aqLevelFromGrade(grade: unknown): DeviceState['airQuality'] {
   if (grade === 1 || grade === 2 || grade === 3 || grade === 4) return grade;
   // 0 = HomeKit "Unknown". Don't default to 1 (Excellent) on missing data —
   // that lies about state in exactly the way the filter-default fix avoids.
   return 0;
 }
 
-function clampFanSpeed(v: unknown): DeviceState['fanSpeed'] {
+export function clampFanSpeed(v: unknown): DeviceState['fanSpeed'] {
   const n = Number(v);
   if (Number.isFinite(n) && n >= 1 && n <= 6) return Math.trunc(n) as DeviceState['fanSpeed'];
   return 1;
 }
 
-function pickNumber(...vals: unknown[]): number | undefined {
+export function pickNumber(...vals: unknown[]): number | undefined {
   for (const v of vals) {
     const n = Number(v);
     if (Number.isFinite(n)) return n;
@@ -657,7 +650,7 @@ function pickNumber(...vals: unknown[]): number | undefined {
   return undefined;
 }
 
-function assembleDeviceState(
+export function assembleDeviceState(
   status: AnyObj,
   sensors: AnyObj,
   aqGrade: AnyObj | undefined,
@@ -702,7 +695,7 @@ function assembleDeviceState(
   };
 }
 
-function sensorDerivedFilterPct(sensors: AnyObj, key: string): number | undefined {
+export function sensorDerivedFilterPct(sensors: AnyObj, key: string): number | undefined {
   const used = pickNumber(sensors[key]);
   if (used === undefined) return undefined;
   return Math.max(0, Math.min(100, 100 - used));
