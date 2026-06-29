@@ -22,9 +22,7 @@ import {
 import { BleManager } from './bleManager.js';
 import { Aranet4Accessory } from './platformAccessory.js';
 import { MqttPublisher } from './mqttPublisher.js';
-
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const pkg = require('../package.json');
+import pkg from '../package.json' with { type: 'json' };
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -48,10 +46,6 @@ export class Aranet4Platform implements DynamicPlatformPlugin {
 
   private bleManager: BleManager | null = null;
   private mqttPublisher: MqttPublisher | null = null;
-
-  // FakeGato — loaded dynamically per-instance since it uses legacy module patterns.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private FakeGatoHistoryService: (new (...args: any[]) => Service) | null = null;
 
   private readonly deviceConfigs: Aranet4DeviceConfig[];
 
@@ -82,9 +76,6 @@ export class Aranet4Platform implements DynamicPlatformPlugin {
 
     // Validate config and warn about issues
     this.validateConfig(platformConfig);
-
-    // Load FakeGato history service
-    this.loadFakeGato();
 
     // Wait for Homebridge to finish restoring cached accessories
     this.api.on('didFinishLaunching', () => {
@@ -212,23 +203,6 @@ export class Aranet4Platform implements DynamicPlatformPlugin {
       this.mqttPublisher ?? undefined,
     );
 
-    // Attach FakeGato history service if enabled
-    if (deviceConfig.enableHistory && this.FakeGatoHistoryService) {
-      try {
-        const historyService = new this.FakeGatoHistoryService('room', platformAccessory, {
-          log: this.log,
-          storage: 'fs',
-          path: this.api.user.storagePath(),
-          filename: `fakegato-aranet4-${deviceId}.json`,
-        });
-        aranet4.setHistoryService(historyService as Service & { addEntry(entry: { time: number; [key: string]: number }): void });
-        this.log.info(`FakeGato history enabled for ${deviceConfig.name}`);
-      } catch (error) {
-        const msg = error instanceof Error ? error.message : String(error);
-        this.log.warn(`Failed to initialize FakeGato history: ${msg}`);
-      }
-    }
-
     this.aranet4Accessories.set(deviceId, aranet4);
     return aranet4;
   }
@@ -341,7 +315,6 @@ export class Aranet4Platform implements DynamicPlatformPlugin {
     this.log.info(`Plugin version: ${pkg.version}`);
     this.log.info(`Node ${process.version} | ${os.platform()} ${os.arch()}`);
     this.log.info(`Storage path: ${this.api.user.storagePath()}`);
-    this.log.info(`FakeGato history: ${this.FakeGatoHistoryService ? 'available' : 'not loaded'}`);
     this.log.info(`MQTT logging: ${this.mqttPublisher ? 'enabled' : 'not configured'}`);
     this.log.info(`Configured devices: ${this.deviceConfigs.length}`);
     for (const d of this.deviceConfigs) {
@@ -356,22 +329,6 @@ export class Aranet4Platform implements DynamicPlatformPlugin {
         'No devices configured — the plugin will auto-discover any Aranet4 in range, ' +
         'but you should add explicit device entries for reliable operation.',
       );
-    }
-  }
-
-  // -----------------------------------------------------------------------
-  // FakeGato loader
-  // -----------------------------------------------------------------------
-
-  private loadFakeGato(): void {
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const fakegato: typeof import('fakegato-history') = require('fakegato-history');
-      this.FakeGatoHistoryService = fakegato(this.api);
-      this.log.debug('FakeGato history service loaded');
-    } catch (error) {
-      const msg = error instanceof Error ? error.message : String(error);
-      this.log.warn(`FakeGato history not available: ${msg}. Eve history will be disabled.`);
     }
   }
 }

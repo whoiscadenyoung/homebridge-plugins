@@ -1,5 +1,5 @@
 import net from 'net';
-import { Aedes } from 'aedes'
+import { Aedes } from "aedes";
 import {
   API,
   DynamicPlatformPlugin,
