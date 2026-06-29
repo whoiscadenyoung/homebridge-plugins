@@ -42,11 +42,11 @@
     "mqtt": "^5.15.1"
   },
   "devDependencies": {
+    "@types/bun": "^1.2.0",
     "@types/node": "^24.0.0",
     "@eslint/js": "^9.0.0",
     "homebridge": "^1.8.0",
     "eslint": "^9.0.0",
-    "@types/jest": "^30.0.0",
     "nodemon": "^3.1.0",
     "typescript": "^5.4.0",
     "typescript-eslint": "^8.0.0"
