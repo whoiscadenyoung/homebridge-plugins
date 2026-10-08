@@ -4,6 +4,15 @@ All notable changes to `homebridge-airmega-iocare` are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.2] — 2026-10-07
+
+### Fixed
+- Purifier polling failed with "could not extract purifier state from HTML" after Coway rebuilt its status page as a Next.js app. State is now read from the page's flight stream.
+- Login for accounts Coway isn't prompting for a password change now uses the r2 flow.
+
+### Changed
+- Synced upstream homebridge-airmega-iocare through v1.1.1: shared HTTP retry helper, 1h pause after rate limits, AP-1515G / AP-1720G recognition, axios ^1.20.0.
+
 ## [1.0.0-beta.5] — 2026-06-25
 
 Discovery fix for accounts where a controllable purifier was never detected.
